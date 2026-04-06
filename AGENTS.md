@@ -440,27 +440,25 @@ Only attempt these after the core loop and visual quality are solid.
 
 ### Stretch Tier 1
 
-* fireflies scatter when Ari misses a pounce
-* subtle moon halo / drifting cloud band
-* improved soft shadows
-* puddle / dew specular accents
-* better deck traversal presentation
-* beauty-tuned post effects if cheap and tasteful
+- [ ] fireflies scatter when Ari misses a pounce
+- [x] subtle moon halo / glow (basic halo implemented)
+- [ ] drifting cloud band near moon
+- [ ] improved soft shadows
+- [ ] puddle / dew specular accents
+- [ ] better deck traversal presentation
+- [ ] beauty-tuned post effects if cheap and tasteful
 
 ### Stretch Tier 2
 
-* decorative extra cats
-
-  * golden rival cat
-  * black-and-white neutral cat
-* decorative perches on fence or deck
-* additional material richness
+- [ ] decorative extra cats (golden rival, black-and-white neutral)
+- [ ] decorative perches on fence or deck
+- [ ] additional material richness
 
 ### Stretch Tier 3
 
-* more advanced flocking
-* richer environmental interactions
-* more complex scoring systems
+- [ ] more advanced flocking
+- [ ] richer environmental interactions
+- [ ] more complex scoring systems
 
 ---
 
@@ -495,49 +493,50 @@ Use these rules when uncertain:
 
 ## Suggested Milestone Order
 
-### Milestone 1: Skeleton
+### Milestone 1: Skeleton ✅
 
-* WebGPU app bootstrapped
-* camera basic follow/orbit
-* placeholder terrain
-* placeholder Ari movement
-* timer and score skeleton
+- [x] WebGPU app bootstrapped
+- [x] camera basic follow/orbit
+- [x] placeholder terrain (flat ground plane at y=0)
+- [x] placeholder Ari movement
+- [x] timer and score skeleton
 
-### Milestone 2: Playable Core
+### Milestone 2: Playable Core 🔶
 
-* Ari controllable with WASD
-* click interaction basics
-* fireflies moving and catchable
-* 2-minute score attack loop functional
+- [x] Ari controllable with WASD
+- [ ] click interaction basics (click-to-move / target firefly)
+- [x] fireflies moving and catchable
+- [x] 2-minute score attack loop functional
 
-### Milestone 3: Renderer Identity
+### Milestone 3: Renderer Identity ✅
 
-* moon visible
-* atmospheric fog added
-* strong moonlight + warm house light
-* basic attractive night palette
+- [x] moon visible (with glow and halo)
+- [x] atmospheric fog added
+- [x] strong moonlight + warm house light
+- [x] basic attractive night palette
 
-### Milestone 4: Ari Appeal
+### Milestone 4: Ari Appeal 🔶
 
-* smooth blended cat model
-* cute movement
-* jump/pounce action
-* improved silhouette and animation parameters
+- [x] smooth blended cat model (SDF: body, head, ears, tail, legs)
+- [x] cute movement (body bob from animPhase)
+- [x] jump/pounce action
+- [x] tail sway animation
+- [ ] improved silhouette and animation parameters (crouch pose, landing squash, walk cycle)
 
-### Milestone 5: World Beauty
+### Milestone 5: World Beauty ❌
 
-* terrain texture data driving height/material variation
-* deck, fence, bushes, house wall integrated
-* firefly congregation zones
-* composition improved for screenshots
+- [ ] terrain texture data driving height/material variation
+- [ ] deck, fence, bushes, house wall integrated
+- [ ] firefly congregation zones (partial: they have home positions but no variety by zone)
+- [ ] composition improved for screenshots
 
-### Milestone 6: Polish
+### Milestone 6: Polish 🔶
 
-* readability tuning
-* camera smoothing / recenter tuning
-* score/timer UI cleanup
-* bug fixes
-* performance tuning
+- [ ] readability tuning
+- [x] camera smoothing / recenter tuning
+- [x] score/timer UI cleanup
+- [ ] bug fixes
+- [ ] performance tuning (configurable render scale exists but not tuned)
 
 ---
 
