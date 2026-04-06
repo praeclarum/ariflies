@@ -127,14 +127,14 @@ export function createBuffers(device) {
     device.queue.writeBuffer(camera, 0, data);
   }
 
-  // Ari: at world center
+  // Ari: at world center, facing +Z
   {
     const data = new ArrayBuffer(ARI_STATE_SIZE);
     const f = new Float32Array(data);
-    // position(vec3f) + facing
-    f[0] = 0.0; f[1] = 0.0; f[2] = 0.0; f[3] = 0.0;
-    // velocity(vec3f) + speed
-    f[4] = 0.0; f[5] = 0.0; f[6] = 0.0; f[7] = 0.0;
+    // position(vec3f) + forwardX
+    f[0] = 0.0; f[1] = 0.0; f[2] = 0.0; f[3] = 0.0;  // forwardX = 0
+    // velocity(vec3f) + forwardZ
+    f[4] = 0.0; f[5] = 0.0; f[6] = 0.0; f[7] = 1.0;  // forwardZ = 1 (facing +Z)
     // groundY, poseState, jumpT, animPhase
     f[8] = 0.0;
     new Uint32Array(data, 36, 1)[0] = POSE_IDLE;

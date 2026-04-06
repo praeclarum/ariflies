@@ -18,9 +18,9 @@ struct InputUniforms {
 
 struct AriState {
   position: vec3f,
-  facing: f32,
+  forwardX: f32,      // forward.x (Y is always 0)
   velocity: vec3f,
-  speed: f32,
+  forwardZ: f32,      // forward.z
   groundY: f32,
   poseState: u32,
   jumpT: f32,

@@ -610,14 +610,94 @@ src/
 * Separate passes provide implicit storage barriers for correct data flow
 * Score readback via async `mapAsync` on a staging buffer (1-frame latency, imperceptible)
 
-### GPU Buffer Layout (6 buffers)
+### Coordinate System & Math Conventions
 
-* **InputUniforms** (uniform, CPU→GPU, 48B): keys bitmask, mouseDelta, dt, time, resolution, renderScale
-* **CameraState** (storage, GPU r/w, 48B): eye, target, orbitYaw/Pitch, distance, fov
-* **AriState** (storage, GPU r/w, 64B): position, velocity, facing, poseState, jumpT, animPhase, tailPhase
-* **FireflyArray** (storage, GPU r/w, ~2400B): 50 × {position, velocity, phase, brightness, homePosition, alive}
-* **GameState** (storage, GPU r/w + staging readback, 16B): score (atomic), catchThisFrame, gamePhase, timeRemaining
-* **SceneParams** (uniform, CPU→GPU, 80B): moonDir/Color, houseLightPos/Color, fogDensity, ambientColor
+**This section is critical. Read it carefully before writing any transformation code.**
+
+#### World Coordinates
+
+* **Right-handed coordinate system**
+* **Y is up**
+* **+X is right** (when looking toward -Z)
+* **+Z is "out of the screen"** / toward the initial camera
+
+#### Vector Math Over Angles
+
+**Do NOT use Euler angles for orientations.** Store directions as unit vectors.
+
+* Ari's facing direction is stored as a 2D unit vector `(forwardX, forwardZ)` in the XZ plane
+* Camera direction is derived from `lookAt - eye`, not from yaw/pitch angles
+* When you need a basis (right, up, forward), compute it from vectors using cross products:
+  - `forward = normalize(lookAt - eye)`
+  - `right = normalize(cross(forward, worldUp))` or equivalently `forward × up`
+  - `up = cross(right, forward)`
+
+**Why no angles?**
+
+* Angles require sin/cos which are easy to get wrong (signs, quadrants, wrapping)
+* Angles require `atan2` to recover, which has its own sign conventions
+* Vector math is self-documenting: `forward × up` clearly gives `right`
+* Interpolating vectors with `normalize(mix(a, b, t))` is simpler than angle wrapping
+
+#### Cross Product Convention (Right-Handed)
+
+```
+forward × up = right     (in 3D: (fx,fy,fz) × (0,1,0) = (-fz, 0, fx) when fy=0)
+up × forward = -right    (reversed order gives opposite direction)
+```
+
+In 2D XZ plane where forward = `(fx, fz)`:
+* `right = (-fz, fx)` — this is `forward × up` projected to XZ
+
+#### World→Local Transformation for Ari
+
+Ari looks toward local +Z. Given Ari's world forward vector `(fx, fz)`:
+
+```
+right = (-fz, fx)   // forward × up, projected to XZ
+
+World→Local rotation (rows are right, up, forward):
+  | -fz   0   fx |     local.x = dot(right, worldPoint)
+  |  0    1   0  |     local.y = worldPoint.y
+  |  fx   0   fz |     local.z = dot(forward, worldPoint)
+```
+
+This matrix rotates world coordinates into Ari's local frame where +Z is forward.
+
+#### Camera Movement Mapping
+
+WASD maps to camera-relative directions:
+* W/S: move along camera's forward/back (XZ projection)
+* A/D: move along camera's left/right (XZ projection)
+
+Derive camera basis from `lookAt - eye`, then:
+* `camForward = normalize((lookAt - eye).xz)` — 2D in XZ plane
+* `camRight = (-camForward.z, camForward.x)` — 90° rotation via `forward × up`
+
+World movement = `inputX * camRight + inputZ * camForward`
+
+#### Facing Direction Update
+
+Ari should face the direction of actual movement (velocity), not input direction:
+
+```wgsl
+if (speed > threshold) {
+  forward = normalize(mix(forward, velocityDir, lerpT));
+}
+```
+
+This ensures the cat faces where it's going, with no lag between input and facing.
+
+### GPU Buffers
+
+Six GPU buffers hold all game state. See code for exact struct layouts.
+
+* **InputUniforms** (uniform, CPU→GPU): keyboard state, mouse delta, dt, time, resolution
+* **CameraState** (storage, GPU r/w): eye position, lookAt target, orbit params, fov
+* **AriState** (storage, GPU r/w): position, forward direction (as vector!), velocity, pose/animation state
+* **FireflyArray** (storage, GPU r/w): array of ~50 fireflies with position, velocity, phase, home position
+* **GameState** (storage, GPU r/w + staging readback): score (atomic), game phase, time remaining
+* **SceneParams** (uniform, CPU→GPU): lighting parameters (moon direction/color, house light, fog, ambient)
 
 ### WGSL Shader Organization
 

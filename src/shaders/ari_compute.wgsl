@@ -29,9 +29,9 @@ struct CameraState {
 
 struct AriState {
   position: vec3f,
-  facing: f32,
+  forwardX: f32,      // forward.x (Y is always 0)
   velocity: vec3f,
-  speed: f32,
+  forwardZ: f32,      // forward.z
   groundY: f32,
   poseState: u32,
   jumpT: f32,
@@ -63,7 +63,7 @@ const MOVE_SPEED: f32 = 5.0;
 const FRICTION: f32 = 8.0;
 const JUMP_VELOCITY: f32 = 6.0;
 const GRAVITY: f32 = 18.0;
-const FACING_LERP: f32 = 10.0;
+const FORWARD_LERP: f32 = 15.0;
 const WORLD_RADIUS: f32 = 15.0;
 
 @compute @workgroup_size(1)
@@ -74,32 +74,22 @@ fn main() {
   // Build movement direction in camera-relative space
   // moveX: +1 = right, -1 = left
   // moveZ: +1 = forward (into scene), -1 = backward
-  var moveX: f32 = 0.0;
-  var moveZ: f32 = 0.0;
-  if ((keys & KEY_W) != 0u) { moveZ += 1.0; }
-  if ((keys & KEY_S) != 0u) { moveZ -= 1.0; }
-  if ((keys & KEY_A) != 0u) { moveX -= 1.0; }
-  if ((keys & KEY_D) != 0u) { moveX += 1.0; }
+  var inputX: f32 = 0.0;
+  var inputZ: f32 = 0.0;
+  if ((keys & KEY_W) != 0u) { inputZ += 1.0; }
+  if ((keys & KEY_S) != 0u) { inputZ -= 1.0; }
+  if ((keys & KEY_A) != 0u) { inputX -= 1.0; }
+  if ((keys & KEY_D) != 0u) { inputX += 1.0; }
 
-  // Transform to world space using camera yaw
-  // 
-  // Coordinate system:
-  //   - Y is up
-  //   - Camera at yaw=0 sits at +Z looking toward -Z
-  //   - Camera offset from Ari: (sin(yaw)*dist, height, cos(yaw)*dist)
-  //
-  // Camera basis vectors (XZ plane only):
-  //   forward = (-sin(yaw), -cos(yaw))  -- direction camera is looking
-  //   right   = ( cos(yaw), -sin(yaw))  -- 90° clockwise from forward
-  //
-  // World movement = moveX * right + moveZ * forward
-  let yaw = camera.orbitYaw;
-  let cosY = cos(yaw);
-  let sinY = sin(yaw);
-  let worldMoveX =  moveX * cosY - moveZ * sinY;
-  let worldMoveZ = -moveX * sinY - moveZ * cosY;
+  // Get camera basis vectors from eye/lookAt
+  // Forward: direction camera is looking (XZ plane, normalized)
+  // Right: forward × up = (fx,0,fz) × (0,1,0) = (-fz, 0, fx)
+  let camFwd3 = camera.lookAt - camera.eye;
+  let camFwd = normalize(vec2f(camFwd3.x, camFwd3.z));
+  let camRight = vec2f(-camFwd.y, camFwd.x);  // (-fz, fx)
 
-  var moveDir = vec2f(worldMoveX, worldMoveZ);
+  // World movement = inputX * right + inputZ * forward
+  var moveDir = inputX * camRight + inputZ * camFwd;
   let moveMag = length(moveDir);
   if (moveMag > 0.001) {
     moveDir = moveDir / moveMag;
@@ -150,19 +140,18 @@ fn main() {
     pos.z = pos.z * (WORLD_RADIUS / distXZ);
   }
 
-  // Update facing direction toward movement
-  var facing = ari.facing;
-  if (moveMag > 0.1) {
-    let targetFacing = atan2(moveDir.x, moveDir.y);
-    // Lerp angle (handle wrapping)
-    var diff = targetFacing - facing;
-    if (diff > 3.14159265) { diff -= 6.28318530; }
-    if (diff < -3.14159265) { diff += 6.28318530; }
-    facing = facing + diff * min(1.0, FACING_LERP * dt);
+  // Update forward direction toward actual movement direction (velocity), not input
+  // This ensures the cat faces where it's actually going, no lag
+  var forward = vec2f(ari.forwardX, ari.forwardZ);
+  let speed = length(vel.xz);
+  if (speed > 0.5) {
+    // Face the direction we're actually moving
+    let velDir = vec2f(vel.x, vel.z) / speed;
+    let lerpT = min(1.0, FORWARD_LERP * dt);
+    forward = normalize(mix(forward, velDir, vec2f(lerpT)));
   }
 
   // Update animation phase
-  let speed = length(vel.xz);
   var animPhase = ari.animPhase;
   animPhase = animPhase + speed * dt * 2.0;
 
@@ -186,9 +175,9 @@ fn main() {
 
   // Write back
   ari.position = pos;
-  ari.facing = facing;
+  ari.forwardX = forward.x;
+  ari.forwardZ = forward.y;  // Note: forward is vec2f(worldX, worldZ)
   ari.velocity = vel;
-  ari.speed = speed;
   ari.groundY = groundY;
   ari.poseState = poseState;
   ari.jumpT = jumpT;

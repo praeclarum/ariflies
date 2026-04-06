@@ -5,7 +5,7 @@
 // Coordinate System:
 //   - Y is up
 //   - Camera at yaw=0 is at +Z looking toward -Z (into the scene)
-//   - Ari at facing=0 looks toward +Z; facing=π looks toward -Z
+//   - Ari at facing=0 looks toward +Z (world forward = (sin(facing), 0, cos(facing)))
 //   - Moon direction is typically (-0.3, 0.8, -0.5) — upper left, slightly behind camera
 
 // ── Shared struct definitions (must match JS/compute layouts) ────────────
@@ -38,9 +38,9 @@ struct CameraState {
 
 struct AriState {
   position: vec3f,
-  facing: f32,
+  forwardX: f32,      // forward.x (Y is always 0)
   velocity: vec3f,
-  speed: f32,
+  forwardZ: f32,      // forward.z
   groundY: f32,
   poseState: u32,
   jumpT: f32,
@@ -130,17 +130,29 @@ fn smin(a: f32, b: f32, k: f32) -> f32 {
   return mix(b, a, h) - k * h * (1.0 - h);
 }
 
-// ── Ari SDF (placeholder: sphere body + head) ───────────────────────────
+// ── Ari SDF ─────────────────────────────────────────────────────────────
+// Ari looks toward local +Z. We rotate world points into Ari's local frame.
+//
+// Given forward = (fx, 0, fz), we can compute:
+//   right = up × forward = (0,1,0) × (fx,0,fz) = (fz, 0, -fx)
+//
+// World→local rotation matrix (rows are right, up, forward):
+//   |  fz   0  -fx |
+//   |  0    1   0  |
+//   |  fx   0   fz |
 
 fn sdAri(p: vec3f) -> f32 {
   let ap = p - ari.position;
-  let cosF = cos(ari.facing);
-  let sinF = sin(ari.facing);
-  // Rotate into Ari's local space
+  
+  // Forward direction (Y=0, normalized)
+  let fwd = vec2f(ari.forwardX, ari.forwardZ);
+  
+  // Build rotation using cross product: right = up × forward
+  // right = (fz, -fx), up = (0,1,0), forward = (fx, fz)
   let lp = vec3f(
-    ap.x * cosF + ap.z * sinF,
+    fwd.y * ap.x - fwd.x * ap.z,   // dot(right, ap) where right = (fz, 0, -fx)
     ap.y,
-    -ap.x * sinF + ap.z * cosF,
+    fwd.x * ap.x + fwd.y * ap.z,   // dot(forward, ap)
   );
 
   // Body bob based on animation
