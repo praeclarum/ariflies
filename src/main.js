@@ -108,14 +108,18 @@ async function main() {
     dispatchCompute(encoder, computePipelines);
     render(encoder, context, renderer);
 
-    // 7. Copy GameState → staging for async readback
-    copyGameStateToStaging(encoder, buffers);
+    // 7. Copy GameState → staging for async readback (skip if staging buffer is mapped)
+    if (!gameSession.readbackPending) {
+      copyGameStateToStaging(encoder, buffers);
+    }
 
     // 8. Submit
     device.queue.submit([encoder.finish()]);
 
-    // 9. Async readback + DOM update
-    requestScoreReadback(buffers, gameSession);
+    // 9. Async readback + DOM update (only if we copied fresh data)
+    if (!gameSession.readbackPending) {
+      requestScoreReadback(buffers, gameSession);
+    }
     updateUI(gameSession);
 
     requestAnimationFrame(frame);
