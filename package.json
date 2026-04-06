@@ -1,0 +1,15 @@
+{
+  "name": "ariflies",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ari and the Fireflies — a WebGPU ray-marched browser game",
+  "scripts": {
+    "start": "live-server --port=8080 --no-browser --ignore=node_modules",
+    "check": "tsc -p jsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@webgpu/types": "^0.1.52",
+    "live-server": "^1.2.2",
+    "typescript": "^5.7.0"
+  }
+}

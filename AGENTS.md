@@ -551,3 +551,53 @@ When in doubt, ask:
 
 If yes, it is likely worth doing.
 If no, it is probably scope creep.
+
+---
+
+## Implementation Decisions (Resolved)
+
+These decisions are final. Do not revisit or second-guess them.
+
+### Language: JavaScript with JSDoc Types
+
+* **JavaScript**, not TypeScript
+* All `.js` files use `// @ts-check` at the top
+* Type annotations via JSDoc (`@param`, `@returns`, `@typedef`, etc.)
+* `jsconfig.json` with `checkJs: true` and `strict: true` enables full type checking in VS Code
+* `tsc --noEmit` runs in CI to gate deploys — zero runtime build step
+* WebGPU types via `@webgpu/types` devDependency
+
+### No Bundler, No Build Step
+
+* ES modules served directly to the browser (`<script type="module">`)
+* `import`/`export` between `.js` files using relative paths with `.js` extensions
+* WGSL shader files in `src/shaders/`, loaded at runtime via `fetch()`
+* No webpack, no esbuild, no rollup, no vite — the repo root **is** the deployable site
+
+### Project Structure
+
+```
+index.html          ← entry point (canvas + UI overlay)
+jsconfig.json       ← type checking config
+package.json        ← dev scripts only (live-server, tsc)
+src/
+  main.js           ← app entry, WebGPU init
+  shaders/          ← .wgsl files loaded via fetch()
+.github/
+  workflows/
+    deploy.yml      ← GitHub Pages deployment
+```
+
+### Deployment: GitHub Pages via Actions
+
+* Repo: `github.com/praeclarum/ariflies`
+* URL: `praeclarum.org/ariflies`
+* Deploy workflow: push to `main` → typecheck → upload repo root → deploy-pages
+* No build artifacts, no `dist/` folder — the repo root is uploaded directly
+* All asset paths must be **relative** (no leading `/`) to work under the `/ariflies/` subpath
+
+### Dev Server: live-server
+
+* `npm start` runs `live-server --port=8080 --no-browser`
+* Auto-refreshes browser on any file change
+* Zero config needed
