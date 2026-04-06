@@ -22,11 +22,11 @@ struct InputUniforms {
 struct CameraState {
   eye: vec3f,
   _pad0: f32,
-  target: vec3f,
+  lookAt: vec3f,
   _pad1: f32,
   orbitYaw: f32,
   orbitPitch: f32,
-  distance: f32,
+  dist: f32,
   fov: f32,
 };
 
@@ -255,9 +255,9 @@ fn rayMarch(ro: vec3f, rd: vec3f) -> RayResult {
 // ── Sky and moon ─────────────────────────────────────────────────────────
 
 fn skyColor(rd: vec3f) -> vec3f {
-  // Night sky gradient
-  let skyUp = vec3f(0.01, 0.01, 0.04);
-  let skyHorizon = vec3f(0.02, 0.03, 0.08);
+  // Night sky gradient - brightened for debugging
+  let skyUp = vec3f(0.05, 0.05, 0.15);
+  let skyHorizon = vec3f(0.08, 0.1, 0.2);
   let t = clamp(rd.y * 0.5 + 0.5, 0.0, 1.0);
   var sky = mix(skyHorizon, skyUp, t);
 
@@ -362,6 +362,12 @@ fn fireflyGlow(ro: vec3f, rd: vec3f, sceneDepth: f32) -> vec3f {
 @fragment
 fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
   let resolution = vec2f(input.resolutionX, input.resolutionY);
+  
+  // Safety check: if resolution is invalid, show red
+  if (resolution.x < 1.0 || resolution.y < 1.0) {
+    return vec4f(1.0, 0.0, 0.0, 1.0);
+  }
+  
   let aspect = resolution.x / resolution.y;
 
   // Pixel coords: -1..1 with aspect correction
@@ -372,8 +378,8 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
 
   // Ray from camera
   let eye = camera.eye;
-  let target = camera.target;
-  let fwd = normalize(target - eye);
+  let lookAt = camera.lookAt;
+  let fwd = normalize(lookAt - eye);
   let worldUp = vec3f(0.0, 1.0, 0.0);
   let right = normalize(cross(fwd, worldUp));
   let up = cross(right, fwd);

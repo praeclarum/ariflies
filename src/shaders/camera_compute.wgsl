@@ -34,11 +34,11 @@ struct AriState {
 struct CameraState {
   eye: vec3f,
   _pad0: f32,
-  target: vec3f,
+  lookAt: vec3f,
   _pad1: f32,
   orbitYaw: f32,
   orbitPitch: f32,
-  distance: f32,
+  dist: f32,
   fov: f32,
 };
 
@@ -86,13 +86,13 @@ fn main() {
   // Smooth interpolation toward desired position
   let smoothFactor = 1.0 - exp(-CAMERA_SMOOTH * dt);
   let eye = mix(camera.eye, desiredEye, vec3f(smoothFactor));
-  let target = mix(camera.target, targetPos, vec3f(smoothFactor));
+  let lookAtPos = mix(camera.lookAt, targetPos, vec3f(smoothFactor));
 
   // Write updated camera state
   camera.eye = eye;
-  camera.target = target;
+  camera.lookAt = lookAtPos;
   camera.orbitYaw = yaw;
   camera.orbitPitch = pitch;
-  camera.distance = CAMERA_DISTANCE;
+  camera.dist = CAMERA_DISTANCE;
   camera.fov = 1.0; // ~60° half-angle tangent
 }

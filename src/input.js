@@ -13,7 +13,7 @@ import { INPUT_UNIFORMS_SIZE, KEY_W, KEY_A, KEY_S, KEY_D, KEY_SPACE, KEY_SHIFT }
  * @property {number} mouseDeltaX
  * @property {number} mouseDeltaY
  * @property {number} mouseButtons
- * @property {boolean} pointerLocked
+ * @property {boolean} isDragging
  */
 
 /** @type {Map<string, number>} */
@@ -38,7 +38,7 @@ export function createInput(canvas) {
     mouseDeltaX: 0,
     mouseDeltaY: 0,
     mouseButtons: 0,
-    pointerLocked: false,
+    isDragging: false,
   };
 
   window.addEventListener('keydown', (e) => {
@@ -51,8 +51,9 @@ export function createInput(canvas) {
     state.keysDown.delete(e.code);
   });
 
+  // Camera rotation via right-click drag or middle-click drag
   canvas.addEventListener('mousemove', (e) => {
-    if (state.pointerLocked || e.buttons !== 0) {
+    if (state.isDragging) {
       state.mouseDeltaX += e.movementX;
       state.mouseDeltaY += e.movementY;
     }
@@ -60,21 +61,24 @@ export function createInput(canvas) {
 
   canvas.addEventListener('mousedown', (e) => {
     state.mouseButtons |= (1 << e.button);
-    // Request pointer lock on click for camera control
-    if (!state.pointerLocked) {
-      canvas.requestPointerLock();
+    // Right-click (button 2) or middle-click (button 1) starts camera drag
+    if (e.button === 2 || e.button === 1) {
+      state.isDragging = true;
+      e.preventDefault();
     }
   });
 
   canvas.addEventListener('mouseup', (e) => {
     state.mouseButtons &= ~(1 << e.button);
+    if (e.button === 2 || e.button === 1) {
+      state.isDragging = false;
+    }
   });
 
-  document.addEventListener('pointerlockchange', () => {
-    state.pointerLocked = document.pointerLockElement === canvas;
-  });
+  // Prevent context menu on right-click
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  // Trackpad / scroll-wheel camera rotation (for users without pointer lock)
+  // Trackpad / scroll-wheel camera rotation
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     state.mouseDeltaX += e.deltaX * 0.5;

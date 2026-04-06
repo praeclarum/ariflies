@@ -48,6 +48,11 @@ async function main() {
   console.log(`  Adapter: ${adapter.info?.vendor ?? 'unknown'} / ${adapter.info?.architecture ?? 'unknown'}`);
   console.log(`  Format: ${format}`);
 
+  // Log GPU errors
+  device.addEventListener('uncapturederror', (event) => {
+    console.error('WebGPU error:', event.error);
+  });
+
   // ── Resize handling ─────────────────────────────────────────────────────
 
   function resize() {
@@ -77,12 +82,20 @@ async function main() {
   const renderScale = 1.0;
   let lastTime = performance.now();
   let totalTime = 0;
+  let frameCount = 0;
 
   function frame() {
     const now = performance.now();
-    const dt = Math.min((now - lastTime) / 1000, 0.05); // cap at 50ms to avoid spiral
+    // Ensure dt is at least 1ms to avoid divide-by-zero and zero-update issues
+    const dt = Math.max(0.001, Math.min((now - lastTime) / 1000, 0.05));
     lastTime = now;
     totalTime += dt;
+    frameCount++;
+
+    // Log first frame to help debug
+    if (frameCount === 1) {
+      console.log('First frame:', { dt, totalTime, canvasSize: [canvas.width, canvas.height] });
+    }
 
     // 1. CPU → GPU: write input uniforms
     writeInputBuffer(device, buffers.input, inputState, dt, totalTime, canvas, renderScale);

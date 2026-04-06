@@ -19,11 +19,11 @@ struct InputUniforms {
 struct CameraState {
   eye: vec3f,
   _pad0: f32,
-  target: vec3f,
+  lookAt: vec3f,
   _pad1: f32,
   orbitYaw: f32,
   orbitPitch: f32,
-  distance: f32,
+  dist: f32,
   fov: f32,
 };
 
