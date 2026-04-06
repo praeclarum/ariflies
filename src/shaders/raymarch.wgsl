@@ -1,6 +1,12 @@
 // Fullscreen ray march shader
 // Vertex: fullscreen triangle from vertex_index
 // Fragment: ray march SDF scene with moonlit atmosphere
+//
+// Coordinate System:
+//   - Y is up
+//   - Camera at yaw=0 is at +Z looking toward -Z (into the scene)
+//   - Ari at facing=0 looks toward +Z; facing=π looks toward -Z
+//   - Moon direction is typically (-0.3, 0.8, -0.5) — upper left, slightly behind camera
 
 // ── Shared struct definitions (must match JS/compute layouts) ────────────
 
@@ -371,9 +377,10 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
   let aspect = resolution.x / resolution.y;
 
   // Pixel coords: -1..1 with aspect correction
+  // Note: uv.y is 0 at top, 1 at bottom, so we flip it
   let pixelCoord = vec2f(
     (uv.x - 0.5) * 2.0 * aspect,
-    (uv.y - 0.5) * 2.0,
+    (0.5 - uv.y) * 2.0,
   );
 
   // Ray from camera

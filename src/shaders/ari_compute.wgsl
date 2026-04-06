@@ -72,6 +72,8 @@ fn main() {
   let keys = input.keys;
 
   // Build movement direction in camera-relative space
+  // moveX: +1 = right, -1 = left
+  // moveZ: +1 = forward (into scene), -1 = backward
   var moveX: f32 = 0.0;
   var moveZ: f32 = 0.0;
   if ((keys & KEY_W) != 0u) { moveZ += 1.0; }
@@ -80,12 +82,22 @@ fn main() {
   if ((keys & KEY_D) != 0u) { moveX += 1.0; }
 
   // Transform to world space using camera yaw
+  // 
+  // Coordinate system:
+  //   - Y is up
+  //   - Camera at yaw=0 sits at +Z looking toward -Z
+  //   - Camera offset from Ari: (sin(yaw)*dist, height, cos(yaw)*dist)
+  //
+  // Camera basis vectors (XZ plane only):
+  //   forward = (-sin(yaw), -cos(yaw))  -- direction camera is looking
+  //   right   = ( cos(yaw), -sin(yaw))  -- 90° clockwise from forward
+  //
+  // World movement = moveX * right + moveZ * forward
   let yaw = camera.orbitYaw;
   let cosY = cos(yaw);
   let sinY = sin(yaw);
-  // Camera forward is -Z in orbit convention, so forward relative to camera:
-  let worldMoveX = moveX * cosY - moveZ * sinY;
-  let worldMoveZ = moveX * sinY + moveZ * cosY;
+  let worldMoveX =  moveX * cosY - moveZ * sinY;
+  let worldMoveZ = -moveX * sinY - moveZ * cosY;
 
   var moveDir = vec2f(worldMoveX, worldMoveZ);
   let moveMag = length(moveDir);

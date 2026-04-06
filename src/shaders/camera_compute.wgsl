@@ -71,6 +71,14 @@ fn main() {
   let targetPos = ari.position + vec3f(0.0, CAMERA_HEIGHT_OFFSET, 0.0);
 
   // Compute desired eye position from orbit angles
+  //
+  // Coordinate system:
+  //   - Y is up
+  //   - yaw=0: camera at +Z looking toward -Z (into the scene)
+  //   - yaw increases counterclockwise when viewed from above
+  //   - pitch=0: camera at horizon level; pitch increases = camera higher
+  //
+  // Camera position = Ari + spherical offset
   let cosP = cos(pitch);
   let sinP = sin(pitch);
   let cosY = cos(yaw);
