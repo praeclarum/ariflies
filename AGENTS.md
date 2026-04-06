@@ -2,7 +2,7 @@
 
 A realtime WebGPU browser game and rendering demo where a stylized black cat named **Ari** hunts glowing fireflies in a moonlit backyard at night.
 
-This project is **rendering-first** and **gameplay-second**. The point is to create a visually impressive, interactive, realtime ray-marched / ray-traced experience in the browser using **JavaScript or TypeScript + WebGPU**. The game layer exists to make the renderer feel alive, memorable, and judge-friendly.
+This project is **rendering-first** and **gameplay-second**. The point is to create a visually impressive, interactive, realtime ray-marched / ray-traced experience in the browser using **JavaScript + WebGPU**. The game layer exists to make the renderer feel alive, memorable, and judge-friendly.
 
 The expected delivery window is about **two weeks**, with implementation done **almost entirely via AI coding agents**. Scope discipline is critical.
 
@@ -27,7 +27,7 @@ This is **not** a deep game. It is a polished visual demo with a light score-att
 
 1. **Runs in the browser**
 
-   * JavaScript or TypeScript
+   * JavaScript
    * WebGPU required
    * Hosted on GitHub Pages (purely static, no server-side code)
 
@@ -601,3 +601,63 @@ src/
 * `npm start` runs `live-server --port=8080 --no-browser`
 * Auto-refreshes browser on any file change
 * Zero config needed
+
+### GPU-First Architecture
+
+* **CPU does only**: gather user input (DOM events), manage the game timer, update the DOM (score/timer text)
+* **GPU compute shaders do everything else**: camera orbit, Ari movement/physics, firefly simulation, catch detection
+* Three separate compute passes per frame in dependency order: camera → Ari → firefly
+* Separate passes provide implicit storage barriers for correct data flow
+* Score readback via async `mapAsync` on a staging buffer (1-frame latency, imperceptible)
+
+### GPU Buffer Layout (6 buffers)
+
+* **InputUniforms** (uniform, CPU→GPU, 48B): keys bitmask, mouseDelta, dt, time, resolution, renderScale
+* **CameraState** (storage, GPU r/w, 48B): eye, target, orbitYaw/Pitch, distance, fov
+* **AriState** (storage, GPU r/w, 64B): position, velocity, facing, poseState, jumpT, animPhase, tailPhase
+* **FireflyArray** (storage, GPU r/w, ~2400B): 50 × {position, velocity, phase, brightness, homePosition, alive}
+* **GameState** (storage, GPU r/w + staging readback, 16B): score (atomic), catchThisFrame, gamePhase, timeRemaining
+* **SceneParams** (uniform, CPU→GPU, 80B): moonDir/Color, houseLightPos/Color, fogDensity, ambientColor
+
+### WGSL Shader Organization
+
+* One `.wgsl` file per pipeline (4 files total)
+* `camera_compute.wgsl`, `ari_compute.wgsl`, `firefly_compute.wgsl`, `raymarch.wgsl`
+* Struct definitions are duplicated across files (WGSL has no `#include`)
+* If `raymarch.wgsl` outgrows itself, split via JS string concatenation — not a preprocessor
+
+### JS Module Structure
+
+```
+src/
+  main.js           ← WebGPU init, frame loop orchestration
+  buffers.js        ← GPU buffer creation, struct sizes, staging readback
+  input.js          ← DOM event capture → input uniform buffer
+  compute.js        ← 3 compute pipelines, shader loading, dispatch
+  renderer.js       ← fullscreen ray march render pipeline
+  game.js           ← session flow, timer, score readback, DOM updates
+  shaders/
+    camera_compute.wgsl
+    ari_compute.wgsl
+    firefly_compute.wgsl
+    raymarch.wgsl
+```
+
+### Frame Pipeline Order
+
+1. `input.writeInputBuffer()` — CPU writes InputUniforms
+2. `game.writeGameState()` — CPU writes time/phase into GameState
+3. Compute pass 1: camera (reads Input+Ari → writes Camera)
+4. Compute pass 2: ari (reads Input+Camera → writes Ari)
+5. Compute pass 3: firefly (reads Input+Ari+Game → writes Fireflies+Game)
+6. Render pass: ray march (reads all buffers → fullscreen triangle)
+7. `copyBufferToBuffer`: GameState → staging
+8. Submit command encoder
+9. `game.requestScoreReadback()` — async mapAsync → update DOM
+
+### Rendering Approach
+
+* Fullscreen triangle (no vertex buffer — positions from `vertex_index`)
+* Configurable render scale passed as uniform (allows half-res for perf tuning)
+* ~50 fireflies (good balance for 2-min session)
+* `atomicAdd` for thread-safe score increment in firefly compute

@@ -1,0 +1,174 @@
+// @ts-check
+
+/**
+ * @fileoverview Creates and dispatches 3 compute pipelines in dependency order:
+ *   1. Camera (reads Input+Ari → writes Camera)
+ *   2. Ari (reads Input+Camera → writes Ari)
+ *   3. Firefly (reads Input+Ari+Game → writes Fireflies+Game)
+ */
+
+import { FIREFLY_COUNT } from './buffers.js';
+
+/**
+ * @typedef {import('./buffers.js').Buffers} Buffers
+ */
+
+/**
+ * @typedef {Object} ComputePipelines
+ * @property {GPUComputePipeline} camera
+ * @property {GPUComputePipeline} ari
+ * @property {GPUComputePipeline} firefly
+ * @property {GPUBindGroup} cameraBindGroup
+ * @property {GPUBindGroup} ariBindGroup
+ * @property {GPUBindGroup} fireflyBindGroup
+ */
+
+/**
+ * Load a WGSL shader file via fetch.
+ * @param {string} path - Relative path from repo root
+ * @returns {Promise<string>}
+ */
+async function loadShader(path) {
+  const resp = await fetch(path);
+  if (!resp.ok) throw new Error(`Failed to load shader: ${path}`);
+  return resp.text();
+}
+
+/**
+ * Create all three compute pipelines and their bind groups.
+ * @param {GPUDevice} device
+ * @param {Buffers} buffers
+ * @returns {Promise<ComputePipelines>}
+ */
+export async function createComputePipelines(device, buffers) {
+  const [cameraSrc, ariSrc, fireflySrc] = await Promise.all([
+    loadShader('src/shaders/camera_compute.wgsl'),
+    loadShader('src/shaders/ari_compute.wgsl'),
+    loadShader('src/shaders/firefly_compute.wgsl'),
+  ]);
+
+  // ── Camera compute pipeline ─────────────────────────────────────────────
+
+  const cameraModule = device.createShaderModule({ label: 'camera-compute', code: cameraSrc });
+  const cameraBGL = device.createBindGroupLayout({
+    label: 'camera-compute-bgl',
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+    ],
+  });
+  const cameraPipeline = device.createComputePipeline({
+    label: 'camera-compute',
+    layout: device.createPipelineLayout({ bindGroupLayouts: [cameraBGL] }),
+    compute: { module: cameraModule, entryPoint: 'main' },
+  });
+  const cameraBindGroup = device.createBindGroup({
+    label: 'camera-compute-bg',
+    layout: cameraBGL,
+    entries: [
+      { binding: 0, resource: { buffer: buffers.input } },
+      { binding: 1, resource: { buffer: buffers.ari } },
+      { binding: 2, resource: { buffer: buffers.camera } },
+    ],
+  });
+
+  // ── Ari compute pipeline ────────────────────────────────────────────────
+
+  const ariModule = device.createShaderModule({ label: 'ari-compute', code: ariSrc });
+  const ariBGL = device.createBindGroupLayout({
+    label: 'ari-compute-bgl',
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+    ],
+  });
+  const ariPipeline = device.createComputePipeline({
+    label: 'ari-compute',
+    layout: device.createPipelineLayout({ bindGroupLayouts: [ariBGL] }),
+    compute: { module: ariModule, entryPoint: 'main' },
+  });
+  const ariBindGroup = device.createBindGroup({
+    label: 'ari-compute-bg',
+    layout: ariBGL,
+    entries: [
+      { binding: 0, resource: { buffer: buffers.input } },
+      { binding: 1, resource: { buffer: buffers.camera } },
+      { binding: 2, resource: { buffer: buffers.ari } },
+    ],
+  });
+
+  // ── Firefly compute pipeline ────────────────────────────────────────────
+
+  const fireflyModule = device.createShaderModule({ label: 'firefly-compute', code: fireflySrc });
+  const fireflyBGL = device.createBindGroupLayout({
+    label: 'firefly-compute-bgl',
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+    ],
+  });
+  const fireflyPipeline = device.createComputePipeline({
+    label: 'firefly-compute',
+    layout: device.createPipelineLayout({ bindGroupLayouts: [fireflyBGL] }),
+    compute: { module: fireflyModule, entryPoint: 'main' },
+  });
+  const fireflyBindGroup = device.createBindGroup({
+    label: 'firefly-compute-bg',
+    layout: fireflyBGL,
+    entries: [
+      { binding: 0, resource: { buffer: buffers.input } },
+      { binding: 1, resource: { buffer: buffers.ari } },
+      { binding: 2, resource: { buffer: buffers.fireflies } },
+      { binding: 3, resource: { buffer: buffers.game } },
+    ],
+  });
+
+  return {
+    camera: cameraPipeline,
+    ari: ariPipeline,
+    firefly: fireflyPipeline,
+    cameraBindGroup,
+    ariBindGroup,
+    fireflyBindGroup,
+  };
+}
+
+/**
+ * Encode all compute dispatches into a command encoder.
+ * Must be called in order: camera → ari → firefly.
+ * Each gets its own compute pass for implicit storage barrier.
+ * @param {GPUCommandEncoder} encoder
+ * @param {ComputePipelines} pipelines
+ */
+export function dispatchCompute(encoder, pipelines) {
+  // Pass 1: Camera
+  {
+    const pass = encoder.beginComputePass({ label: 'camera-compute-pass' });
+    pass.setPipeline(pipelines.camera);
+    pass.setBindGroup(0, pipelines.cameraBindGroup);
+    pass.dispatchWorkgroups(1);
+    pass.end();
+  }
+
+  // Pass 2: Ari
+  {
+    const pass = encoder.beginComputePass({ label: 'ari-compute-pass' });
+    pass.setPipeline(pipelines.ari);
+    pass.setBindGroup(0, pipelines.ariBindGroup);
+    pass.dispatchWorkgroups(1);
+    pass.end();
+  }
+
+  // Pass 3: Fireflies
+  {
+    const pass = encoder.beginComputePass({ label: 'firefly-compute-pass' });
+    pass.setPipeline(pipelines.firefly);
+    pass.setBindGroup(0, pipelines.fireflyBindGroup);
+    pass.dispatchWorkgroups(Math.ceil(FIREFLY_COUNT / 64));
+    pass.end();
+  }
+}
