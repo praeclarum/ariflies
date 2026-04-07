@@ -272,38 +272,174 @@ fn rayMarch(ro: vec3f, rd: vec3f) -> RayResult {
 
 // ── Sky and moon ─────────────────────────────────────────────────────────
 
+// Hash function for procedural stars
+fn hash21(p: vec2f) -> f32 {
+  var p3 = fract(vec3f(p.x, p.y, p.x) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+fn hash31(p: vec3f) -> f32 {
+  var p3 = fract(p * 0.1031);
+  p3 += dot(p3, p3.zyx + 31.32);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+// Procedural star field
+fn starField(rd: vec3f) -> f32 {
+  // Only render stars above horizon
+  if (rd.y < 0.05) { return 0.0; }
+  
+  // Project ray direction to a 2D grid for star placement
+  let theta = atan2(rd.z, rd.x);
+  let phi = asin(rd.y);
+  
+  // Multiple scales for variety
+  var stars = 0.0;
+  
+  // Fine stars (many, dim)
+  let grid1 = vec2f(theta * 30.0, phi * 60.0);
+  let cell1 = floor(grid1);
+  let starPos1 = hash21(cell1);
+  let starBright1 = hash21(cell1 + 100.0);
+  if (starPos1 > 0.97) {
+    let dist = length(fract(grid1) - 0.5);
+    let twinkle = 0.7 + 0.3 * sin(input.time * (2.0 + starBright1 * 4.0) + starBright1 * 6.28);
+    stars += smoothstep(0.15, 0.0, dist) * starBright1 * 0.4 * twinkle;
+  }
+  
+  // Medium stars (fewer, brighter)
+  let grid2 = vec2f(theta * 15.0, phi * 30.0);
+  let cell2 = floor(grid2);
+  let starPos2 = hash21(cell2 + 50.0);
+  let starBright2 = hash21(cell2 + 150.0);
+  if (starPos2 > 0.92) {
+    let dist = length(fract(grid2) - 0.5);
+    let twinkle = 0.8 + 0.2 * sin(input.time * (1.5 + starBright2 * 3.0) + starBright2 * 6.28);
+    stars += smoothstep(0.12, 0.0, dist) * starBright2 * 0.7 * twinkle;
+  }
+  
+  // Bright stars (rare, very bright)
+  let grid3 = vec2f(theta * 8.0, phi * 16.0);
+  let cell3 = floor(grid3);
+  let starPos3 = hash21(cell3 + 200.0);
+  let starBright3 = hash21(cell3 + 250.0);
+  if (starPos3 > 0.96) {
+    let dist = length(fract(grid3) - 0.5);
+    let twinkle = 0.85 + 0.15 * sin(input.time * (1.0 + starBright3 * 2.0) + starBright3 * 6.28);
+    stars += smoothstep(0.08, 0.0, dist) * (0.8 + starBright3 * 0.4) * twinkle;
+  }
+  
+  // Fade stars near horizon
+  let horizonFade = smoothstep(0.05, 0.25, rd.y);
+  
+  return stars * horizonFade;
+}
+
 fn skyColor(rd: vec3f) -> vec3f {
-  // Night sky gradient - brightened for debugging
-  let skyUp = vec3f(0.05, 0.05, 0.15);
-  let skyHorizon = vec3f(0.08, 0.1, 0.2);
+  // Rich night sky gradient with more drama
+  let skyZenith = vec3f(0.02, 0.02, 0.08);    // Deep blue-black at top
+  let skyMid = vec3f(0.04, 0.04, 0.12);        // Slightly lighter blue
+  let skyHorizon = vec3f(0.06, 0.08, 0.15);    // Subtle blue-gray at horizon
+  
+  // Two-stage gradient for more interesting sky
   let t = clamp(rd.y * 0.5 + 0.5, 0.0, 1.0);
-  var sky = mix(skyHorizon, skyUp, t);
+  let tMid = smoothstep(0.0, 0.5, t);
+  let tTop = smoothstep(0.5, 1.0, t);
+  var sky = mix(skyHorizon, skyMid, tMid);
+  sky = mix(sky, skyZenith, tTop);
+  
+  // Add subtle purple/magenta tint toward zenith (night sky color)
+  let purpleTint = vec3f(0.03, 0.01, 0.05) * smoothstep(0.3, 0.8, rd.y);
+  sky += purpleTint;
+  
+  // Horizon glow on opposite side of moon (atmospheric scattering)
+  let moonDir = normalize(scene.moonDir);
+  let antiMoon = -vec3f(moonDir.x, 0.0, moonDir.z);
+  let horizonGlow = max(dot(normalize(vec3f(rd.x, 0.0, rd.z)), antiMoon), 0.0);
+  let horizonBand = exp(-abs(rd.y) * 8.0);
+  sky += vec3f(0.02, 0.03, 0.05) * horizonGlow * horizonBand;
+  
+  // Add stars
+  let stars = starField(rd);
+  sky += vec3f(0.9, 0.95, 1.0) * stars;
 
   // Moon
-  let moonDir = normalize(scene.moonDir);
   let moonDot = dot(rd, moonDir);
 
-  // Moon disk
-  if (moonDot > 0.999) {
-    sky = vec3f(0.95, 0.93, 0.85);
-  }
-  // Moon glow
-  let moonGlow = pow(max(moonDot, 0.0), 256.0) * 0.5;
+  // Soft moon disk with limb darkening
+  let moonRadius = 0.9995;  // Slightly larger moon
+  let moonEdge = smoothstep(moonRadius - 0.002, moonRadius + 0.001, moonDot);
+  let moonCenter = vec3f(0.98, 0.96, 0.88);  // Warm white center
+  let moonLimb = vec3f(0.85, 0.82, 0.75);     // Slightly darker/cooler edge
+  let limbDarkening = smoothstep(moonRadius, 1.0, moonDot);
+  let moonDisk = mix(moonLimb, moonCenter, limbDarkening);
+  sky = mix(sky, moonDisk, moonEdge);
+  
+  // Tight inner glow
+  let moonGlow = pow(max(moonDot, 0.0), 256.0) * 0.6;
   sky += scene.moonColor * moonGlow;
 
-  // Broader halo
-  let halo = pow(max(moonDot, 0.0), 16.0) * 0.08;
-  sky += scene.moonColor * halo;
+  // Medium halo
+  let halo1 = pow(max(moonDot, 0.0), 32.0) * 0.15;
+  sky += scene.moonColor * halo1;
+  
+  // Broad atmospheric halo
+  let halo2 = pow(max(moonDot, 0.0), 8.0) * 0.06;
+  sky += scene.moonColor * halo2 * vec3f(0.8, 0.85, 1.0);
 
   return sky;
 }
 
-// ── Fog ──────────────────────────────────────────────────────────────────
+// ── Fog with moon rays ───────────────────────────────────────────────────
 
 fn applyFog(color: vec3f, dist: f32, rd: vec3f) -> vec3f {
   let fogAmount = 1.0 - exp(-dist * scene.fogDensity);
-  let fogColor = skyColor(rd) * 1.5 + scene.ambientColor;
-  return mix(color, fogColor, fogAmount);
+  
+  // Base fog color from sky
+  var fogColor = skyColor(rd) * 1.2 + scene.ambientColor;
+  
+  // Moon influence on fog - brighter when looking toward moon (god rays effect)
+  let moonDir = normalize(scene.moonDir);
+  let moonInfluence = max(dot(rd, moonDir), 0.0);
+  
+  // Add moon-tinted brightness to fog when looking toward moon
+  // Subtle effect without noisy banding
+  let godRayStrength = pow(moonInfluence, 3.0) * 0.25;
+  fogColor += scene.moonColor * godRayStrength;
+  
+  // Height-based fog density (thicker near ground)
+  let heightFog = exp(-max(rd.y, 0.0) * 2.0);
+  let adjustedFogAmount = fogAmount * (0.7 + 0.3 * heightFog);
+  
+  return mix(color, fogColor, adjustedFogAmount);
+}
+
+// ── Soft shadows ─────────────────────────────────────────────────────────
+
+// SDF-based soft shadow using penumbra estimation
+// Returns shadow factor: 0.0 = full shadow, 1.0 = fully lit
+fn calcSoftShadow(ro: vec3f, rd: vec3f, mint: f32, maxt: f32, k: f32) -> f32 {
+  var res = 1.0;
+  var t = mint;
+  var ph = 1e10;  // Previous SDF value for improved penumbra
+  
+  for (var i = 0; i < 32; i++) {
+    let p = ro + rd * t;
+    let h = sceneSDF(p).dist;
+    
+    // Improved soft shadow with better penumbra estimation
+    let y = h * h / (2.0 * ph);
+    let d = sqrt(h * h - y * y);
+    res = min(res, k * d / max(0.0, t - y));
+    ph = h;
+    
+    t += clamp(h, 0.02, 0.2);
+    
+    if (res < 0.001 || t > maxt) { break; }
+  }
+  
+  return clamp(res, 0.0, 1.0);
 }
 
 // ── Lighting ─────────────────────────────────────────────────────────────
@@ -322,27 +458,36 @@ fn shade(p: vec3f, normal: vec3f, materialId: u32) -> vec3f {
   }
 
   let moonDir = normalize(scene.moonDir);
-
-  // Moonlight diffuse
+  
+  // Calculate moon shadow (soft shadows from moonlight)
+  // Start slightly off surface to avoid self-shadowing artifacts
+  let shadowOrigin = p + normal * 0.05;
+  let moonShadow = calcSoftShadow(shadowOrigin, moonDir, 0.1, 30.0, 8.0);
+  
+  // Moonlight diffuse with shadows
   let moonDiffuse = max(dot(normal, moonDir), 0.0);
-  color += color * scene.moonColor * moonDiffuse * 1.5;
+  let shadowedMoon = moonDiffuse * (0.3 + 0.7 * moonShadow);  // Keep some ambient in shadow
+  color += color * scene.moonColor * shadowedMoon * 1.5;
 
-  // Ambient
-  color += scene.ambientColor * 0.3;
+  // Ambient (slightly boosted to compensate for shadowed areas)
+  color += scene.ambientColor * 0.35;
 
-  // House light (point light)
+  // House light (point light) with shadows
   let toLight = scene.houseLightPos - p;
   let lightDist = length(toLight);
   let lightDir = toLight / lightDist;
   let lightAtten = 1.0 / (1.0 + lightDist * lightDist * 0.02);
   let lightDiffuse = max(dot(normal, lightDir), 0.0);
-  color += scene.houseLightColor * lightDiffuse * lightAtten * 0.5;
+  
+  // House light shadow (softer k value for warmer light)
+  let houseShadow = calcSoftShadow(shadowOrigin, lightDir, 0.1, lightDist, 4.0);
+  color += scene.houseLightColor * lightDiffuse * lightAtten * houseShadow * 0.5;
 
-  // Rim light for Ari (helps silhouette)
+  // Rim light for Ari (helps silhouette) - no shadow needed
   if (materialId == 1u) {
     let viewDir = normalize(camera.eye - p);
     let rim = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.0);
-    color += scene.moonColor * rim * 0.3;
+    color += scene.moonColor * rim * 0.35;
   }
 
   return color;
