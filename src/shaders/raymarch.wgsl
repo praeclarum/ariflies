@@ -337,28 +337,28 @@ fn starField(rd: vec3f) -> f32 {
 }
 
 fn skyColor(rd: vec3f) -> vec3f {
-  // Rich night sky gradient with more drama
-  let skyZenith = vec3f(0.02, 0.02, 0.08);    // Deep blue-black at top
-  let skyMid = vec3f(0.04, 0.04, 0.12);        // Slightly lighter blue
-  let skyHorizon = vec3f(0.06, 0.08, 0.15);    // Subtle blue-gray at horizon
+  // Dramatic dark night sky - deep blacks with color
+  let skyZenith = vec3f(0.005, 0.005, 0.025);   // Near black with hint of blue
+  let skyMid = vec3f(0.01, 0.012, 0.04);        // Very dark blue
+  let skyHorizon = vec3f(0.02, 0.025, 0.06);    // Dark blue-gray horizon
   
-  // Two-stage gradient for more interesting sky
+  // Two-stage gradient for depth
   let t = clamp(rd.y * 0.5 + 0.5, 0.0, 1.0);
   let tMid = smoothstep(0.0, 0.5, t);
   let tTop = smoothstep(0.5, 1.0, t);
   var sky = mix(skyHorizon, skyMid, tMid);
   sky = mix(sky, skyZenith, tTop);
   
-  // Add subtle purple/magenta tint toward zenith (night sky color)
-  let purpleTint = vec3f(0.03, 0.01, 0.05) * smoothstep(0.3, 0.8, rd.y);
+  // Subtle purple/magenta tint toward zenith
+  let purpleTint = vec3f(0.015, 0.005, 0.025) * smoothstep(0.3, 0.8, rd.y);
   sky += purpleTint;
   
-  // Horizon glow on opposite side of moon (atmospheric scattering)
+  // Subtle horizon glow on opposite side of moon
   let moonDir = normalize(scene.moonDir);
   let antiMoon = -vec3f(moonDir.x, 0.0, moonDir.z);
   let horizonGlow = max(dot(normalize(vec3f(rd.x, 0.0, rd.z)), antiMoon), 0.0);
-  let horizonBand = exp(-abs(rd.y) * 8.0);
-  sky += vec3f(0.02, 0.03, 0.05) * horizonGlow * horizonBand;
+  let horizonBand = exp(-abs(rd.y) * 10.0);
+  sky += vec3f(0.01, 0.015, 0.025) * horizonGlow * horizonBand;
   
   // Add stars
   let stars = starField(rd);
@@ -464,13 +464,13 @@ fn shade(p: vec3f, normal: vec3f, materialId: u32) -> vec3f {
   let shadowOrigin = p + normal * 0.05;
   let moonShadow = calcSoftShadow(shadowOrigin, moonDir, 0.1, 30.0, 8.0);
   
-  // Moonlight diffuse with shadows
+  // Moonlight diffuse with shadows - high contrast
   let moonDiffuse = max(dot(normal, moonDir), 0.0);
-  let shadowedMoon = moonDiffuse * (0.3 + 0.7 * moonShadow);  // Keep some ambient in shadow
-  color += color * scene.moonColor * shadowedMoon * 1.5;
+  let shadowedMoon = moonDiffuse * (0.08 + 0.92 * moonShadow);  // Deep shadows
+  color += color * scene.moonColor * shadowedMoon * 2.0;
 
-  // Ambient (slightly boosted to compensate for shadowed areas)
-  color += scene.ambientColor * 0.35;
+  // Minimal ambient - let shadows be dark
+  color += scene.ambientColor * 0.15;
 
   // House light (point light) with shadows
   let toLight = scene.houseLightPos - p;

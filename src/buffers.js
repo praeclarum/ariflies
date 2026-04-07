@@ -197,14 +197,14 @@ export function createBuffers(device) {
     const mx = 0.4, my = 0.35, mz = 0.6;
     const ml = Math.sqrt(mx * mx + my * my + mz * mz);
     f[0] = mx / ml; f[1] = my / ml; f[2] = mz / ml; f[3] = 0.0;
-    // moonColor (cool blue-white, slightly brighter for drama)
-    f[4] = 0.7; f[5] = 0.8; f[6] = 1.0; f[7] = 0.0;
+    // moonColor (bright for contrast against dark)
+    f[4] = 0.8; f[5] = 0.9; f[6] = 1.1; f[7] = 0.0;
     // houseLightPos
     f[8] = -8.0; f[9] = 3.0; f[10] = 8.0; f[11] = 0.0;
-    // houseLightColor (warm amber) + fogDensity (lower for better god rays)
-    f[12] = 1.0; f[13] = 0.7; f[14] = 0.3; f[15] = 0.03;
-    // ambientColor (very dim blue, slightly stronger for shadow readability)
-    f[16] = 0.025; f[17] = 0.035; f[18] = 0.07; f[19] = 0.0;
+    // houseLightColor (warm amber) + fogDensity (low for clarity)
+    f[12] = 1.0; f[13] = 0.7; f[14] = 0.3; f[15] = 0.02;
+    // ambientColor (very minimal - let moonlight do the work)
+    f[16] = 0.008; f[17] = 0.01; f[18] = 0.02; f[19] = 0.0;
     device.queue.writeBuffer(scene, 0, data);
   }
 
