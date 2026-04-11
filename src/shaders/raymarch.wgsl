@@ -80,7 +80,7 @@ struct SceneParams {
   _pad3: f32,
   worldRadius: f32,
   maxHeight: f32,
-  _pad4: f32,
+  terrainFadeWidth: f32,
   _pad5: f32,
 };
 
@@ -96,6 +96,7 @@ struct SceneParams {
 @group(0) @binding(7) var terrainSampler: sampler;
 @group(0) @binding(8) var slopeTexture: texture_2d<f32>;
 @group(0) @binding(9) var slopeSampler: sampler;
+@group(0) @binding(10) var normalTexture: texture_2d<f32>;
 
 // ── Vertex shader: fullscreen triangle ───────────────────────────────────
 
@@ -216,13 +217,15 @@ fn terrainFade(worldXZ: vec2f) -> f32 {
   // Distance from UV center (0.5, 0.5) in UV space
   let fromCenter = abs(uv - vec2f(0.5)) * 2.0; // 0..1 inside, >1 outside
   let edgeDist = max(fromCenter.x, fromCenter.y);
-  return 1.0 - smoothstep(0.9, 1.0, edgeDist);
+  return 1.0 - smoothstep(1.0 - scene.terrainFadeWidth, 1.0, edgeDist);
 }
 
 fn getTerrainHeight(worldXZ: vec2f) -> f32 {
   let uv = worldToTerrainUV(worldXZ);
   let clampedUV = clamp(uv, vec2f(0.001), vec2f(0.999));
-  let h = textureSample(terrainTexture, terrainSampler, clampedUV).r;
+  // Must use explicit LOD — this is called inside ray march and shadow loops
+  // which are non-uniform control flow (textureSample derivatives are undefined).
+  let h = textureSampleLevel(terrainTexture, terrainSampler, clampedUV, 0.0).r;
   return h * scene.maxHeight * terrainFade(worldXZ);
 }
 
@@ -253,7 +256,7 @@ fn sceneSDF(p: vec3f) -> HitInfo {
   let terrainH = getTerrainHeight(p.xz);
   let uv = worldToTerrainUV(p.xz);
   let clampedUV = clamp(uv, vec2f(0.001), vec2f(0.999));
-  let slopeFactor = textureSample(slopeTexture, slopeSampler, clampedUV).r;
+  let slopeFactor = textureSampleLevel(slopeTexture, slopeSampler, clampedUV, 0.0).r;
   let ground = (p.y - terrainH) * slopeFactor;
 
   // Ari
@@ -271,15 +274,16 @@ fn sceneSDF(p: vec3f) -> HitInfo {
   return hit;
 }
 
-// Cheaper SDF for shadow rays (skip gradient, use conservative factor)
+// Cheaper SDF for shadow rays — uses slope factor to prevent overshoot
+// past terrain peaks, but on flat terrain the factor is ~1.0 (no penalty).
 fn sceneSDF_cheap(p: vec3f) -> f32 {
   let terrainH = getTerrainHeight(p.xz);
-  // Use raw height difference for terrain — the 0.4 conservative factor
-  // causes false occlusion near the surface. For shadow rays, we only care
-  // about whether the ray goes underground.
-  let ground = p.y - terrainH;
-  let ariDist = sdAri(p);
-  return min(ariDist, ground);
+  let uv = worldToTerrainUV(p.xz);
+  let clampedUV = clamp(uv, vec2f(0.001), vec2f(0.999));
+  let slopeFactor = textureSampleLevel(slopeTexture, slopeSampler, clampedUV, 0.0).r;
+  let ground = (p.y - terrainH) * slopeFactor;
+  // DEBUG: exclude Ari from shadow SDF to test if she causes the splotches
+  return ground;
 }
 
 fn sceneNormal(p: vec3f) -> vec3f {
@@ -294,9 +298,9 @@ fn sceneNormal(p: vec3f) -> vec3f {
 }
 
 fn terrainNormal(p: vec3f) -> vec3f {
-  let grad = getTerrainGradient(p.xz);
-  // Normal from heightfield gradient: (-dh/dx, 1, -dh/dz) normalized
-  return normalize(vec3f(-grad.x, 1.0, -grad.y));
+  let uv = worldToTerrainUV(p.xz);
+  let clampedUV = clamp(uv, vec2f(0.001), vec2f(0.999));
+  return normalize(textureSampleLevel(normalTexture, terrainSampler, clampedUV, 0.0).rgb);
 }
 
 // ── Ray marching ─────────────────────────────────────────────────────────
@@ -323,7 +327,7 @@ fn rayMarch(ro: vec3f, rd: vec3f) -> RayResult {
     let hit = sceneSDF(p);
     result.dist = hit.dist;
 
-    // Distance-adaptive thresholds: relax at distance (subpixel anyway)
+    // Distance-adaptive threshold: relax at distance (subpixel anyway)
     let surfaceThreshold = SURFACE_DIST + result.totalDist * 0.0005;
 
     if (hit.dist < surfaceThreshold) {
@@ -331,9 +335,10 @@ fn rayMarch(ro: vec3f, rd: vec3f) -> RayResult {
       result.materialId = hit.materialId;
       break;
     }
-    // Scale minimum step with distance — far away we can afford bigger leaps
-    let minStep = 0.01 + result.totalDist * 0.001;
-    result.totalDist += max(hit.dist, minStep);
+    // Trust the SDF — only enforce a tiny fixed minimum to avoid zero-step stalls.
+    // Do NOT scale minStep with distance: that causes overshoot on grazing rays,
+    // producing dark circular splotches where the ray punches underground.
+    result.totalDist += max(hit.dist, 0.005);
     if (result.totalDist > MAX_DIST) { break; }
   }
 
@@ -493,14 +498,14 @@ fn calcSoftShadow(ro: vec3f, rd: vec3f, mint: f32, maxt: f32, k: f32) -> f32 {
   var res = 1.0;
   var t = mint;
   
-  for (var i = 0; i < 32; i++) {
+  for (var i = 0; i < 64; i++) {
     let p = ro + rd * t;
     let h = sceneSDF_cheap(p);
     
     // Simple soft shadow: smaller h/t ratio = sharper shadow edge
     res = min(res, k * max(h, 0.0) / t);
     
-    t += clamp(h, 0.02, 0.25);
+    t += max(h, 0.001);
     
     if (res < 0.001 || t > maxt) { break; }
   }

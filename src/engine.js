@@ -125,6 +125,7 @@ export function loadLevel(engine, levelData) {
     const terrain = createTerrainTextures(engine.device, terrainSize);
     engine.buffers.terrainTexture = terrain.terrainTexture;
     engine.buffers.slopeTexture = terrain.slopeTexture;
+    engine.buffers.normalTexture = terrain.normalTexture;
     engine.buffers.terrainSampler = terrain.terrainSampler;
     engine.buffers.terrainSize = terrain.terrainSize;
 
@@ -139,6 +140,7 @@ export function loadLevel(engine, levelData) {
   preprocessTerrain(
     engine.device, engine.computePipelines, engine.buffers,
     levelData.config.world.radius, levelData.config.world.maxHeight,
+    levelData.config.scene.terrainFadeWidth,
   );
 
   // Reset game session if one exists

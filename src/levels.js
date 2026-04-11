@@ -37,7 +37,7 @@ export const MAX_FIREFLIES = 200;
  * @property {{ startPosition: [number, number, number] }} ari
  * @property {FireflyZone[]} fireflyZones
  * @property {{ moon: { direction: [number, number, number], color: [number, number, number] }, houseLight: { position: [number, number, number], color: [number, number, number] } }} lights
- * @property {{ fogDensity: number, ambientColor: [number, number, number] }} scene
+ * @property {{ fogDensity: number, ambientColor: [number, number, number], terrainFadeWidth: number }} scene
  * @property {{ initialDistance: number, initialPitch: number }} camera
  * @property {{ duration: number }} game
  */
@@ -74,7 +74,7 @@ export function defaultLevelConfig() {
       moon: { direction: [0.4, 0.35, 0.6], color: [0.8, 0.9, 1.1] },
       houseLight: { position: [-8, 3, 8], color: [1.0, 0.7, 0.3] },
     },
-    scene: { fogDensity: 0.02, ambientColor: [0.008, 0.01, 0.02] },
+    scene: { fogDensity: 0.02, ambientColor: [0.008, 0.01, 0.02], terrainFadeWidth: 0.1 },
     camera: { initialDistance: 10.0, initialPitch: 0.6 },
     game: { duration: 120 },
   };
@@ -198,6 +198,7 @@ export function parseLevelConfig(json) {
     scene: {
       fogDensity: json.scene?.fogDensity ?? defaults.scene.fogDensity,
       ambientColor: json.scene?.ambientColor ?? defaults.scene.ambientColor,
+      terrainFadeWidth: json.scene?.terrainFadeWidth ?? defaults.scene.terrainFadeWidth,
     },
     camera: {
       initialDistance: json.camera?.initialDistance ?? defaults.camera.initialDistance,

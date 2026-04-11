@@ -57,7 +57,8 @@
       0.008,
       0.01,
       0.02
-    ]
+    ],
+    "terrainFadeWidth": 0.1
   },
   "camera": {
     "initialDistance": 10,

@@ -29,7 +29,7 @@ export const FIREFLY_ARRAY_SIZE = FIREFLY_STRIDE * MAX_FIREFLIES;
 /** GameState: score(u32) + catchThisFrame(u32) + gamePhase(u32) + timeRemaining(f32) */
 export const GAME_STATE_SIZE = 16;
 
-/** SceneParams: moonDir(vec3f) + _pad + moonColor(vec3f) + _pad + houseLightPos(vec3f) + _pad + houseLightColor(vec3f) + fogDensity(f32) + ambientColor(vec3f) + _pad + worldRadius(f32) + maxHeight(f32) + _pad(2) */
+/** SceneParams: moonDir(vec3f) + _pad + moonColor(vec3f) + _pad + houseLightPos(vec3f) + _pad + houseLightColor(vec3f) + fogDensity(f32) + ambientColor(vec3f) + _pad + worldRadius(f32) + maxHeight(f32) + terrainFadeWidth(f32) + _pad */
 export const SCENE_PARAMS_SIZE = 96;
 
 // ── Key bitmask constants (shared with WGSL) ───────────────────────────────
@@ -70,6 +70,7 @@ export const DEFAULT_TERRAIN_SIZE = 256;
  * @property {GPUBuffer} gameStaging
  * @property {GPUTexture} terrainTexture
  * @property {GPUTexture} slopeTexture
+ * @property {GPUTexture} normalTexture
  * @property {GPUSampler} terrainSampler
  * @property {number} terrainSize
  */
@@ -78,7 +79,7 @@ export const DEFAULT_TERRAIN_SIZE = 256;
  * Create terrain GPU textures at the given resolution.
  * @param {GPUDevice} device
  * @param {number} size - Terrain texture width/height (must be square)
- * @returns {{ terrainTexture: GPUTexture, slopeTexture: GPUTexture, terrainSampler: GPUSampler, terrainSize: number }}
+ * @returns {{ terrainTexture: GPUTexture, slopeTexture: GPUTexture, normalTexture: GPUTexture, terrainSampler: GPUSampler, terrainSize: number }}
  */
 export function createTerrainTextures(device, size) {
   const terrainTexture = device.createTexture({
@@ -95,6 +96,13 @@ export function createTerrainTextures(device, size) {
     usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
   });
 
+  const normalTexture = device.createTexture({
+    label: 'NormalTexture',
+    size: [size, size],
+    format: 'rgba16float',
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  });
+
   const terrainSampler = device.createSampler({
     label: 'TerrainSampler',
     magFilter: 'linear',
@@ -103,7 +111,7 @@ export function createTerrainTextures(device, size) {
     addressModeV: 'clamp-to-edge',
   });
 
-  return { terrainTexture, slopeTexture, terrainSampler, terrainSize: size };
+  return { terrainTexture, slopeTexture, normalTexture, terrainSampler, terrainSize: size };
 }
 
 /**
@@ -251,8 +259,8 @@ export function createBuffers(device) {
     f[12] = 1.0; f[13] = 0.7; f[14] = 0.3; f[15] = 0.02;
     // ambientColor (very minimal - let moonlight do the work)
     f[16] = 0.008; f[17] = 0.01; f[18] = 0.02; f[19] = 0.0;
-    // worldRadius, maxHeight (defaults, overwritten by level load)
-    f[20] = 15.0; f[21] = 5.0; f[22] = 0.0; f[23] = 0.0;
+    // worldRadius, maxHeight, terrainFadeWidth (defaults, overwritten by level load)
+    f[20] = 15.0; f[21] = 5.0; f[22] = 0.1; f[23] = 0.0;
     device.queue.writeBuffer(scene, 0, data);
   }
 
@@ -302,7 +310,7 @@ export async function readbackGameState(buffers) {
  * @property {{ radius: number, maxHeight: number }} world
  * @property {{ startPosition: [number, number, number] }} ari
  * @property {{ moon: { direction: [number, number, number], color: [number, number, number] }, houseLight: { position: [number, number, number], color: [number, number, number] } }} lights
- * @property {{ fogDensity: number, ambientColor: [number, number, number] }} scene
+ * @property {{ fogDensity: number, ambientColor: [number, number, number], terrainFadeWidth: number }} scene
  * @property {{ initialDistance: number, initialPitch: number }} camera
  * @property {{ duration: number }} game
  */
@@ -400,7 +408,8 @@ export function resetBuffersFromLevel(device, buffers, config, fireflyHomes, ter
     // World params
     f[20] = config.world.radius;
     f[21] = config.world.maxHeight;
-    f[22] = 0.0; f[23] = 0.0;
+    f[22] = config.scene.terrainFadeWidth;
+    f[23] = 0.0;
     device.queue.writeBuffer(buffers.scene, 0, data);
   }
 

@@ -144,6 +144,7 @@ export async function createComputePipelines(device, buffers) {
       { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'float' } },
       { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'r32float' } },
       { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+      { binding: 3, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rgba16float' } },
     ],
   });
   const terrainPreprocessPipeline = device.createComputePipeline({
@@ -228,9 +229,9 @@ export function rebuildAriBindGroup(device, pipelines, buffers) {
  * @param {number} worldRadius
  * @param {number} maxHeight
  */
-export function preprocessTerrain(device, pipelines, buffers, worldRadius, maxHeight) {
+export function preprocessTerrain(device, pipelines, buffers, worldRadius, maxHeight, terrainFadeWidth = 0.1) {
   // Create a small temp uniform for the preprocess params (16-byte aligned)
-  const paramsData = new Float32Array([worldRadius, maxHeight, 0, 0]);
+  const paramsData = new Float32Array([worldRadius, maxHeight, terrainFadeWidth, 0]);
   const paramsBuffer = device.createBuffer({
     label: 'terrain-preprocess-params',
     size: 16,
@@ -245,6 +246,7 @@ export function preprocessTerrain(device, pipelines, buffers, worldRadius, maxHe
       { binding: 0, resource: buffers.terrainTexture.createView() },
       { binding: 1, resource: buffers.slopeTexture.createView() },
       { binding: 2, resource: { buffer: paramsBuffer } },
+      { binding: 3, resource: buffers.normalTexture.createView() },
     ],
   });
 
