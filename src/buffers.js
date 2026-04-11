@@ -56,8 +56,8 @@ export const PHASE_WAITING = 0;
 export const PHASE_PLAYING = 1;
 export const PHASE_ENDED   = 2;
 
-/** Terrain texture resolution */
-export const TERRAIN_SIZE = 256;
+/** Default terrain texture resolution */
+export const DEFAULT_TERRAIN_SIZE = 256;
 
 /**
  * @typedef {Object} Buffers
@@ -69,8 +69,42 @@ export const TERRAIN_SIZE = 256;
  * @property {GPUBuffer} scene
  * @property {GPUBuffer} gameStaging
  * @property {GPUTexture} terrainTexture
+ * @property {GPUTexture} slopeTexture
  * @property {GPUSampler} terrainSampler
+ * @property {number} terrainSize
  */
+
+/**
+ * Create terrain GPU textures at the given resolution.
+ * @param {GPUDevice} device
+ * @param {number} size - Terrain texture width/height (must be square)
+ * @returns {{ terrainTexture: GPUTexture, slopeTexture: GPUTexture, terrainSampler: GPUSampler, terrainSize: number }}
+ */
+export function createTerrainTextures(device, size) {
+  const terrainTexture = device.createTexture({
+    label: 'TerrainTexture',
+    size: [size, size],
+    format: 'rgba8unorm',
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+  });
+
+  const slopeTexture = device.createTexture({
+    label: 'SlopeTexture',
+    size: [size, size],
+    format: 'r32float',
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  });
+
+  const terrainSampler = device.createSampler({
+    label: 'TerrainSampler',
+    magFilter: 'linear',
+    minFilter: 'linear',
+    addressModeU: 'clamp-to-edge',
+    addressModeV: 'clamp-to-edge',
+  });
+
+  return { terrainTexture, slopeTexture, terrainSampler, terrainSize: size };
+}
 
 /**
  * Create all GPU buffers with initial state.
@@ -120,21 +154,8 @@ export function createBuffers(device) {
     usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
   });
 
-  // Terrain texture (256×256 RGBA8, initially flat)
-  const terrainTexture = device.createTexture({
-    label: 'TerrainTexture',
-    size: [TERRAIN_SIZE, TERRAIN_SIZE],
-    format: 'rgba8unorm',
-    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-  });
-
-  const terrainSampler = device.createSampler({
-    label: 'TerrainSampler',
-    magFilter: 'linear',
-    minFilter: 'linear',
-    addressModeU: 'clamp-to-edge',
-    addressModeV: 'clamp-to-edge',
-  });
+  // Terrain textures (default size, recreated on level load if needed)
+  const terrain = createTerrainTextures(device, DEFAULT_TERRAIN_SIZE);
 
   // ── Write initial values ────────────────────────────────────────────────
 
@@ -235,7 +256,7 @@ export function createBuffers(device) {
     device.queue.writeBuffer(scene, 0, data);
   }
 
-  return { input, camera, ari, fireflies, game, scene, gameStaging, terrainTexture, terrainSampler };
+  return { input, camera, ari, fireflies, game, scene, gameStaging, ...terrain };
 }
 
 /**
@@ -385,11 +406,12 @@ export function resetBuffersFromLevel(device, buffers, config, fireflyHomes, ter
 
   // Terrain texture: upload from ImageData
   if (terrainImageData) {
+    const size = terrainImageData.width;
     device.queue.writeTexture(
       { texture: buffers.terrainTexture },
       terrainImageData.data,
-      { bytesPerRow: TERRAIN_SIZE * 4 },
-      { width: TERRAIN_SIZE, height: TERRAIN_SIZE },
+      { bytesPerRow: size * 4 },
+      { width: size, height: size },
     );
   }
 }

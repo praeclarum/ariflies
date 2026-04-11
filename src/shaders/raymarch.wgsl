@@ -94,6 +94,7 @@ struct SceneParams {
 @group(0) @binding(5) var<uniform> scene: SceneParams;
 @group(0) @binding(6) var terrainTexture: texture_2d<f32>;
 @group(0) @binding(7) var terrainSampler: sampler;
+@group(0) @binding(8) var slopeTexture: texture_2d<f32>;
 
 // ── Vertex shader: fullscreen triangle ───────────────────────────────────
 
@@ -226,7 +227,8 @@ fn getTerrainHeight(worldXZ: vec2f) -> f32 {
 
 // Terrain gradient for proper SDF distance estimation and analytic normals
 fn getTerrainGradient(worldXZ: vec2f) -> vec2f {
-  let texelSize = scene.worldRadius * 2.0 / 256.0; // world-space texel
+  let texSize = f32(textureDimensions(terrainTexture, 0).x);
+  let texelSize = scene.worldRadius * 2.0 / texSize; // world-space texel
   let e = texelSize;
   let hL = getTerrainHeight(worldXZ - vec2f(e, 0.0));
   let hR = getTerrainHeight(worldXZ + vec2f(e, 0.0));
@@ -246,12 +248,13 @@ struct HitInfo {
 
 fn sceneSDF(p: vec3f) -> HitInfo {
   // Terrain heightfield distance estimate.
-  // Use a fixed conservative factor rather than per-step gradient, which
-  // created non-smooth SDF causing view-dependent splotchy artifacts.
-  // For gentle terrain (max slope ~0.5), 1/sqrt(1+0.25) ≈ 0.89, so 0.7 is safe.
-  // Analytic terrainNormal() handles shading — no gradient needed here.
+  // Use precomputed per-texel conservative factor from slope texture.
   let terrainH = getTerrainHeight(p.xz);
-  let ground = (p.y - terrainH) * 0.7;
+  let uv = worldToTerrainUV(p.xz);
+  let slopeSize = vec2f(textureDimensions(slopeTexture, 0));
+  let slopeCoord = vec2i(clamp(uv * slopeSize, vec2f(0.0), slopeSize - vec2f(1.0)));
+  let slopeFactor = textureLoad(slopeTexture, slopeCoord, 0).r;
+  let ground = (p.y - terrainH) * slopeFactor;
 
   // Ari
   let ariDist = sdAri(p);

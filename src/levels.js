@@ -148,11 +148,12 @@ async function loadTerrainImage(levelId) {
     }
     const blob = await resp.blob();
     const bitmap = await createImageBitmap(blob);
-    const canvas = new OffscreenCanvas(TERRAIN_SIZE, TERRAIN_SIZE);
+    const size = bitmap.width; // terrain textures must be square
+    const canvas = new OffscreenCanvas(size, size);
     const ctx = /** @type {OffscreenCanvasRenderingContext2D} */ (canvas.getContext('2d'));
     if (!ctx) throw new Error('Failed to get 2d context');
-    ctx.drawImage(bitmap, 0, 0, TERRAIN_SIZE, TERRAIN_SIZE);
-    return ctx.getImageData(0, 0, TERRAIN_SIZE, TERRAIN_SIZE);
+    ctx.drawImage(bitmap, 0, 0, size, size);
+    return ctx.getImageData(0, 0, size, size);
   } catch (e) {
     console.warn(`Error loading terrain image for ${levelId}:`, e);
     return defaultTerrainImageData();

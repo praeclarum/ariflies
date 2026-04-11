@@ -18,6 +18,7 @@ import { MAX_FIREFLIES } from './buffers.js';
  * @property {GPUComputePipeline} camera
  * @property {GPUComputePipeline} ari
  * @property {GPUComputePipeline} firefly
+ * @property {GPUComputePipeline} terrainPreprocess
  * @property {GPUBindGroup} cameraBindGroup
  * @property {GPUBindGroup} ariBindGroup
  * @property {GPUBindGroup} fireflyBindGroup
@@ -41,10 +42,11 @@ async function loadShader(path) {
  * @returns {Promise<ComputePipelines>}
  */
 export async function createComputePipelines(device, buffers) {
-  const [cameraSrc, ariSrc, fireflySrc] = await Promise.all([
+  const [cameraSrc, ariSrc, fireflySrc, terrainPreprocSrc] = await Promise.all([
     loadShader('src/shaders/camera_compute.wgsl'),
     loadShader('src/shaders/ari_compute.wgsl'),
     loadShader('src/shaders/firefly_compute.wgsl'),
+    loadShader('src/shaders/terrain_preprocess.wgsl'),
   ]);
 
   // ── Camera compute pipeline ─────────────────────────────────────────────
@@ -133,10 +135,28 @@ export async function createComputePipelines(device, buffers) {
     ],
   });
 
+  // ── Terrain preprocess pipeline ─────────────────────────────────────────
+
+  const terrainPreprocModule = device.createShaderModule({ label: 'terrain-preprocess', code: terrainPreprocSrc });
+  const terrainPreprocBGL = device.createBindGroupLayout({
+    label: 'terrain-preprocess-bgl',
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'float' } },
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'r32float' } },
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+    ],
+  });
+  const terrainPreprocessPipeline = device.createComputePipeline({
+    label: 'terrain-preprocess',
+    layout: device.createPipelineLayout({ bindGroupLayouts: [terrainPreprocBGL] }),
+    compute: { module: terrainPreprocModule, entryPoint: 'main' },
+  });
+
   return {
     camera: cameraPipeline,
     ari: ariPipeline,
     firefly: fireflyPipeline,
+    terrainPreprocess: terrainPreprocessPipeline,
     cameraBindGroup,
     ariBindGroup,
     fireflyBindGroup,
@@ -177,4 +197,63 @@ export function dispatchCompute(encoder, pipelines) {
     pass.dispatchWorkgroups(Math.ceil(MAX_FIREFLIES / 64));
     pass.end();
   }
+}
+
+/**
+ * Rebuild the Ari compute bind group (needed after terrain texture recreation).
+ * @param {GPUDevice} device
+ * @param {ComputePipelines} pipelines
+ * @param {Buffers} buffers
+ */
+export function rebuildAriBindGroup(device, pipelines, buffers) {
+  pipelines.ariBindGroup = device.createBindGroup({
+    label: 'ari-compute-bg',
+    layout: pipelines.ari.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: buffers.input } },
+      { binding: 1, resource: { buffer: buffers.camera } },
+      { binding: 2, resource: { buffer: buffers.ari } },
+      { binding: 3, resource: { buffer: buffers.scene } },
+      { binding: 4, resource: buffers.terrainTexture.createView() },
+      { binding: 5, resource: buffers.terrainSampler },
+    ],
+  });
+}
+
+/**
+ * Run the one-time terrain preprocess: compute max-slope texture from heightmap.
+ * @param {GPUDevice} device
+ * @param {ComputePipelines} pipelines
+ * @param {Buffers} buffers
+ * @param {number} worldRadius
+ * @param {number} maxHeight
+ */
+export function preprocessTerrain(device, pipelines, buffers, worldRadius, maxHeight) {
+  // Create a small temp uniform for the preprocess params (16-byte aligned)
+  const paramsData = new Float32Array([worldRadius, maxHeight, 0, 0]);
+  const paramsBuffer = device.createBuffer({
+    label: 'terrain-preprocess-params',
+    size: 16,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+  device.queue.writeBuffer(paramsBuffer, 0, paramsData);
+
+  const bindGroup = device.createBindGroup({
+    label: 'terrain-preprocess-bg',
+    layout: pipelines.terrainPreprocess.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: buffers.terrainTexture.createView() },
+      { binding: 1, resource: buffers.slopeTexture.createView() },
+      { binding: 2, resource: { buffer: paramsBuffer } },
+    ],
+  });
+
+  const size = buffers.terrainSize;
+  const encoder = device.createCommandEncoder({ label: 'terrain-preprocess' });
+  const pass = encoder.beginComputePass({ label: 'terrain-preprocess-pass' });
+  pass.setPipeline(pipelines.terrainPreprocess);
+  pass.setBindGroup(0, bindGroup);
+  pass.dispatchWorkgroups(Math.ceil(size / 16), Math.ceil(size / 16));
+  pass.end();
+  device.queue.submit([encoder.finish()]);
 }

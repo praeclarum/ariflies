@@ -49,6 +49,8 @@ export async function createRenderer(device, format, buffers) {
       { binding: 6, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
       // 7: Terrain sampler
       { binding: 7, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+      // 8: Slope texture (r32float, unfilterable)
+      { binding: 8, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'unfilterable-float' } },
     ],
   });
 
@@ -82,10 +84,35 @@ export async function createRenderer(device, format, buffers) {
       { binding: 5, resource: { buffer: buffers.scene } },
       { binding: 6, resource: buffers.terrainTexture.createView() },
       { binding: 7, resource: buffers.terrainSampler },
+      { binding: 8, resource: buffers.slopeTexture.createView() },
     ],
   });
 
   return { pipeline, bindGroup };
+}
+
+/**
+ * Rebuild the render bind group (needed after terrain texture recreation).
+ * @param {GPUDevice} device
+ * @param {Renderer} renderer
+ * @param {Buffers} buffers
+ */
+export function rebuildRenderBindGroup(device, renderer, buffers) {
+  renderer.bindGroup = device.createBindGroup({
+    label: 'raymarch-bg',
+    layout: renderer.pipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: buffers.input } },
+      { binding: 1, resource: { buffer: buffers.camera } },
+      { binding: 2, resource: { buffer: buffers.ari } },
+      { binding: 3, resource: { buffer: buffers.fireflies } },
+      { binding: 4, resource: { buffer: buffers.game } },
+      { binding: 5, resource: { buffer: buffers.scene } },
+      { binding: 6, resource: buffers.terrainTexture.createView() },
+      { binding: 7, resource: buffers.terrainSampler },
+      { binding: 8, resource: buffers.slopeTexture.createView() },
+    ],
+  });
 }
 
 /**

@@ -5,11 +5,11 @@
  * renderer, and frame loop. Used by both main.js (game) and editor.js (preview).
  */
 
-import { createBuffers, copyGameStateToStaging, resetBuffersFromLevel, GAME_STATE_SIZE, PHASE_PLAYING } from './buffers.js';
+import { createBuffers, copyGameStateToStaging, resetBuffersFromLevel, createTerrainTextures, GAME_STATE_SIZE, PHASE_PLAYING } from './buffers.js';
 import { createInput, writeInputBuffer } from './input.js';
 import { createGame, writeGameState, requestScoreReadback, updateUI } from './game.js';
-import { createComputePipelines, dispatchCompute } from './compute.js';
-import { createRenderer, render } from './renderer.js';
+import { createComputePipelines, dispatchCompute, rebuildAriBindGroup, preprocessTerrain } from './compute.js';
+import { createRenderer, render, rebuildRenderBindGroup } from './renderer.js';
 import { spawnFirefliesFromZones } from './levels.js';
 
 /**
@@ -113,7 +113,28 @@ export async function createEngine(canvas) {
  */
 export function loadLevel(engine, levelData) {
   const homes = spawnFirefliesFromZones(levelData.config.fireflyZones);
+  const terrainSize = levelData.terrainImageData.width;
+
+  // Recreate terrain textures if size changed
+  if (terrainSize !== engine.buffers.terrainSize) {
+    const terrain = createTerrainTextures(engine.device, terrainSize);
+    engine.buffers.terrainTexture = terrain.terrainTexture;
+    engine.buffers.slopeTexture = terrain.slopeTexture;
+    engine.buffers.terrainSampler = terrain.terrainSampler;
+    engine.buffers.terrainSize = terrain.terrainSize;
+
+    // Rebuild bind groups that reference terrain textures
+    rebuildAriBindGroup(engine.device, engine.computePipelines, engine.buffers);
+    rebuildRenderBindGroup(engine.device, engine.renderer, engine.buffers);
+  }
+
   resetBuffersFromLevel(engine.device, engine.buffers, levelData.config, homes, levelData.terrainImageData);
+
+  // Preprocess terrain: compute max-slope texture for ray marcher
+  preprocessTerrain(
+    engine.device, engine.computePipelines, engine.buffers,
+    levelData.config.world.radius, levelData.config.world.maxHeight,
+  );
 
   // Reset game session if one exists
   if (engine.gameSession) {
