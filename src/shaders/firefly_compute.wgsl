@@ -1,85 +1,11 @@
 // Firefly simulation + catch detection compute shader
 // Reads Input + Ari + Game → writes Fireflies + Game
-
-struct InputUniforms {
-  keys: u32,
-  mouseButtons: u32,
-  mouseDeltaX: f32,
-  mouseDeltaY: f32,
-  dt: f32,
-  time: f32,
-  resolutionX: f32,
-  resolutionY: f32,
-  renderScale: f32,
-  analogX: f32,
-  analogZ: f32,
-  _pad3: f32,
-};
-
-struct AriState {
-  position: vec3f,
-  forwardX: f32,      // forward.x (Y is always 0)
-  velocity: vec3f,
-  forwardZ: f32,      // forward.z
-  groundY: f32,
-  poseState: u32,
-  jumpT: f32,
-  animPhase: f32,
-  tailPhase: f32,
-  maxJumpHeight: f32,
-  _pad1: f32,
-  _pad2: f32,
-};
-
-struct Firefly {
-  position: vec3f,
-  phase: f32,
-  velocity: vec3f,
-  brightness: f32,
-  homePosition: vec3f,
-  alive: u32,
-};
-
-struct GameState {
-  score: atomic<u32>,
-  catchThisFrame: atomic<u32>,
-  gamePhase: u32,
-  timeRemaining: f32,
-};
-
-struct HouseLightData {
-  position: vec3f,
-  intensity: f32,
-  color: vec3f,
-  attenuation: f32,
-  shadowK: f32,
-  shadowMaxDistance: f32,
-  _pad0: f32,
-  _pad1: f32,
-};
-
-struct SceneParams {
-  moonDir: vec3f,
-  _pad0: f32,
-  moonColor: vec3f,
-  _pad1: f32,
-  ambientColor: vec3f,
-  fogDensity: f32,
-  worldRadius: f32,
-  maxHeight: f32,
-  terrainFadeWidth: f32,
-  ambientStrength: f32,
-  fogSkyScale: f32,
-  pointLightDiffuseScale: f32,
-  moonShadowK: f32,
-  moonShadowMaxDistance: f32,
-  houseLights: array<HouseLightData, 10>,
-};
+// Shared structs are prepended at runtime from src/buffers.js.
 
 @group(0) @binding(0) var<uniform> input: InputUniforms;
 @group(0) @binding(1) var<storage, read> ari: AriState;
 @group(0) @binding(2) var<storage, read_write> fireflies: array<Firefly>;
-@group(0) @binding(3) var<storage, read_write> game: GameState;
+@group(0) @binding(3) var<storage, read_write> game: GameStateAtomic;
 @group(0) @binding(4) var<uniform> scene: SceneParams;
 @group(0) @binding(5) var terrainTexture: texture_2d<f32>;
 @group(0) @binding(6) var terrainSampler: sampler;

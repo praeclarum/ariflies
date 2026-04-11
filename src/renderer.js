@@ -6,6 +6,8 @@
  * buffers as read-only storage/uniforms in the fragment shader.
  */
 
+import { prependWGSLSharedStructs } from './buffers.js';
+
 /**
  * @typedef {import('./buffers.js').Buffers} Buffers
  */
@@ -26,7 +28,7 @@
 export async function createRenderer(device, format, buffers) {
   const resp = await fetch('src/shaders/raymarch.wgsl');
   if (!resp.ok) throw new Error('Failed to load raymarch.wgsl');
-  const shaderSrc = await resp.text();
+  const shaderSrc = prependWGSLSharedStructs(await resp.text());
 
   const module = device.createShaderModule({ label: 'raymarch', code: shaderSrc });
 
@@ -41,20 +43,18 @@ export async function createRenderer(device, format, buffers) {
       { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
       // 3: FireflyArray (read-only storage)
       { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
-      // 4: GameState (read-only storage)
-      { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
-      // 5: SceneParams (uniform)
-      { binding: 5, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-      // 6: Terrain texture
-      { binding: 6, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
-      // 7: Terrain sampler
-      { binding: 7, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
-      // 8: Slope texture (r32float, filterable with float32-filterable feature)
-      { binding: 8, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
-      // 9: Slope sampler
-      { binding: 9, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
-      // 10: Precomputed terrain normals
-      { binding: 10, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+      // 4: SceneParams (uniform)
+      { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+      // 5: Terrain texture
+      { binding: 5, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+      // 6: Terrain sampler
+      { binding: 6, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+      // 7: Slope texture (r32float, filterable with float32-filterable feature)
+      { binding: 7, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+      // 8: Slope sampler
+      { binding: 8, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+      // 9: Precomputed terrain normals
+      { binding: 9, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
     ],
   });
 
@@ -84,13 +84,12 @@ export async function createRenderer(device, format, buffers) {
       { binding: 1, resource: { buffer: buffers.camera } },
       { binding: 2, resource: { buffer: buffers.ari } },
       { binding: 3, resource: { buffer: buffers.fireflies } },
-      { binding: 4, resource: { buffer: buffers.game } },
-      { binding: 5, resource: { buffer: buffers.scene } },
-      { binding: 6, resource: buffers.terrainTexture.createView() },
-      { binding: 7, resource: buffers.terrainSampler },
-      { binding: 8, resource: buffers.slopeTexture.createView() },
-      { binding: 9, resource: buffers.terrainSampler },
-      { binding: 10, resource: buffers.normalTexture.createView() },
+      { binding: 4, resource: { buffer: buffers.scene } },
+      { binding: 5, resource: buffers.terrainTexture.createView() },
+      { binding: 6, resource: buffers.terrainSampler },
+      { binding: 7, resource: buffers.slopeTexture.createView() },
+      { binding: 8, resource: buffers.terrainSampler },
+      { binding: 9, resource: buffers.normalTexture.createView() },
     ],
   });
 
@@ -112,13 +111,12 @@ export function rebuildRenderBindGroup(device, renderer, buffers) {
       { binding: 1, resource: { buffer: buffers.camera } },
       { binding: 2, resource: { buffer: buffers.ari } },
       { binding: 3, resource: { buffer: buffers.fireflies } },
-      { binding: 4, resource: { buffer: buffers.game } },
-      { binding: 5, resource: { buffer: buffers.scene } },
-      { binding: 6, resource: buffers.terrainTexture.createView() },
-      { binding: 7, resource: buffers.terrainSampler },
-      { binding: 8, resource: buffers.slopeTexture.createView() },
-      { binding: 9, resource: buffers.terrainSampler },
-      { binding: 10, resource: buffers.normalTexture.createView() },
+      { binding: 4, resource: { buffer: buffers.scene } },
+      { binding: 5, resource: buffers.terrainTexture.createView() },
+      { binding: 6, resource: buffers.terrainSampler },
+      { binding: 7, resource: buffers.slopeTexture.createView() },
+      { binding: 8, resource: buffers.terrainSampler },
+      { binding: 9, resource: buffers.normalTexture.createView() },
     ],
   });
 }

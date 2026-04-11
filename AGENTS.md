@@ -491,7 +491,7 @@ levels/
   level0.json       ← default level metadata (entities, lights, spawn zones)
   level0.png        ← default level terrain (256×256 RGBA heightmap/material)
 src/
-  buffers.js        ← GPU buffer creation, struct sizes, staging readback
+  buffers.js        ← Struct definitions and sizes, GPU buffer creation, staging readback
   compute.js        ← 3 compute pipelines, shader loading, dispatch
   editor.js         ← level editor: terrain canvas, JSON editor, file I/O
   engine.js         ← reusable engine: WebGPU init, frame loop, level loading
@@ -612,21 +612,12 @@ This ensures the cat faces where it's going, with no lag between input and facin
 
 ### GPU Buffers
 
-Six GPU buffers hold all game state. See code for exact struct layouts.
-
-* **InputUniforms** (uniform, CPU→GPU): keyboard state, mouse delta, dt, time, resolution
-* **CameraState** (storage, GPU r/w): eye position, lookAt target, orbit params, fov
-* **AriState** (storage, GPU r/w): position, forward direction (as vector!), velocity, pose/animation state
-* **FireflyArray** (storage, GPU r/w): array of ~50 fireflies with position, velocity, phase, home position
-* **GameState** (storage, GPU r/w + staging readback): score (atomic), game phase, time remaining
-* **SceneParams** (uniform, CPU→GPU): lighting parameters (moon direction/color, house light, fog, ambient)
+Six GPU buffers hold all game state defined in buffer.js. See code for exact struct layouts.
 
 ### WGSL Shader Organization
 
-* One `.wgsl` file per pipeline (4 files total)
-* `camera_compute.wgsl`, `ari_compute.wgsl`, `firefly_compute.wgsl`, `raymarch.wgsl`
-* Struct definitions are duplicated across files (WGSL has no `#include`)
-* If `raymarch.wgsl` outgrows itself, split via JS string concatenation — not a preprocessor
+* One `.wgsl` file per pipeline (5 files total)
+* Each file gets prefixed by struct definitions from `buffers.js` at runtime before compilation
 
 ### Frame Pipeline Order
 
@@ -644,7 +635,6 @@ Six GPU buffers hold all game state. See code for exact struct layouts.
 
 * Fullscreen triangle (no vertex buffer — positions from `vertex_index`)
 * Configurable render scale passed as uniform (allows half-res for perf tuning)
-* ~50 fireflies (good balance for 2-min session)
 * `atomicAdd` for thread-safe score increment in firefly compute
 
 ### Level Data System

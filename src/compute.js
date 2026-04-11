@@ -7,7 +7,7 @@
  *   3. Firefly (reads Input+Ari+Game+Scene+Terrain → writes Fireflies+Game)
  */
 
-import { MAX_FIREFLIES } from './buffers.js';
+import { MAX_FIREFLIES, prependWGSLSharedStructs } from './buffers.js';
 
 /**
  * @typedef {import('./buffers.js').Buffers} Buffers
@@ -25,14 +25,15 @@ import { MAX_FIREFLIES } from './buffers.js';
  */
 
 /**
- * Load a WGSL shader file via fetch.
+ * Load a WGSL shader file via fetch and prepend shared struct definitions.
  * @param {string} path - Relative path from repo root
  * @returns {Promise<string>}
  */
 async function loadShader(path) {
   const resp = await fetch(path);
   if (!resp.ok) throw new Error(`Failed to load shader: ${path}`);
-  return resp.text();
+  const shaderSource = await resp.text();
+  return prependWGSLSharedStructs(shaderSource);
 }
 
 /**

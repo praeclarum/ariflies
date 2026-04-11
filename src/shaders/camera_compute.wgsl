@@ -1,46 +1,6 @@
 // Camera orbit compute shader
 // Reads Input + Ari → writes Camera
-
-struct InputUniforms {
-  keys: u32,
-  mouseButtons: u32,
-  mouseDeltaX: f32,
-  mouseDeltaY: f32,
-  dt: f32,
-  time: f32,
-  resolutionX: f32,
-  resolutionY: f32,
-  renderScale: f32,
-  analogX: f32,
-  analogZ: f32,
-  _pad3: f32,
-};
-
-struct AriState {
-  position: vec3f,
-  forwardX: f32,      // forward.x (Y is always 0)
-  velocity: vec3f,
-  forwardZ: f32,      // forward.z
-  groundY: f32,
-  poseState: u32,
-  jumpT: f32,
-  animPhase: f32,
-  tailPhase: f32,
-  maxJumpHeight: f32,
-  _pad1: f32,
-  _pad2: f32,
-};
-
-struct CameraState {
-  eye: vec3f,
-  _pad0: f32,
-  lookAt: vec3f,
-  _pad1: f32,
-  orbitYaw: f32,
-  orbitPitch: f32,
-  dist: f32,
-  fov: f32,
-};
+// Shared structs are prepended at runtime from src/buffers.js.
 
 @group(0) @binding(0) var<uniform> input: InputUniforms;
 @group(0) @binding(1) var<storage, read> ari: AriState;

@@ -14,6 +14,107 @@ export const MAX_FIREFLIES = 200;
 /** Maximum number of house lights supported in SceneParams */
 export const MAX_HOUSE_LIGHTS = 10;
 
+/**
+ * Shared WGSL structs injected into runtime-loaded shaders.
+ * Keep this in sync with the byte-size constants below.
+ */
+export const WGSL_SHARED_STRUCTS = String.raw`
+struct InputUniforms {
+  keys: u32,          // +0
+  mouseButtons: u32,  // +4
+  mouseDeltaX: f32,   // +8
+  mouseDeltaY: f32,   // +12
+  dt: f32,            // +16
+  time: f32,          // +20
+  resolutionX: f32,   // +24
+  resolutionY: f32,   // +28
+  renderScale: f32,   // +32
+  analogX: f32,       // +36
+  analogZ: f32,       // +40
+  _pad3: f32,         // +44
+};
+
+struct CameraState {
+  eye: vec3f,         // +0
+  _pad0: f32,         // +12
+  lookAt: vec3f,      // +16
+  _pad1: f32,         // +28
+  orbitYaw: f32,      // +32
+  orbitPitch: f32,    // +36
+  dist: f32,          // +40
+  fov: f32,           // +44
+};
+
+struct AriState {
+  position: vec3f,    // +0
+  forwardX: f32,      // +12
+  velocity: vec3f,    // +16
+  forwardZ: f32,      // +28
+  groundY: f32,       // +32
+  poseState: u32,     // +36
+  jumpT: f32,         // +40
+  animPhase: f32,     // +44
+  tailPhase: f32,     // +48
+  maxJumpHeight: f32, // +52
+  _pad1: f32,         // +56
+  _pad2: f32,         // +60
+};
+
+struct Firefly {
+  position: vec3f,    // +0
+  phase: f32,         // +12
+  velocity: vec3f,    // +16
+  brightness: f32,    // +28
+  homePosition: vec3f,// +32
+  alive: u32,         // +44
+};
+
+struct GameStateAtomic {
+  score: atomic<u32>, // +0
+  catchThisFrame: atomic<u32>, // +4
+  gamePhase: u32,     // +8
+  timeRemaining: f32, // +12
+};
+
+struct HouseLightData {
+  position: vec3f,
+  intensity: f32,
+  color: vec3f,
+  attenuation: f32,
+  shadowK: f32,
+  shadowMaxDistance: f32,
+  _pad0: f32,
+  _pad1: f32,
+};
+
+struct SceneParams {
+  moonDir: vec3f,
+  _pad0: f32,
+  moonColor: vec3f,
+  _pad1: f32,
+  ambientColor: vec3f,
+  fogDensity: f32,
+  worldRadius: f32,
+  maxHeight: f32,
+  terrainFadeWidth: f32,
+  ambientStrength: f32,
+  fogSkyScale: f32,
+  pointLightDiffuseScale: f32,
+  moonShadowK: f32,
+  moonShadowMaxDistance: f32,
+  houseLights: array<HouseLightData, 10>,
+};
+`;
+
+/**
+ * Prepend shared WGSL struct definitions to a shader source string.
+ * @param {string} shaderSource
+ * @returns {string}
+ */
+export function prependWGSLSharedStructs(shaderSource) {
+  return `${WGSL_SHARED_STRUCTS}\n${shaderSource}`;
+}
+
 // ── Struct byte sizes (must match WGSL struct layouts) ──────────────────────
 
 /** InputUniforms: keys(u32) + mouseButtons(u32) + mouseDelta(vec2f) + dt(f32) + time(f32) + resolution(vec2f) + renderScale(f32) + _pad(f32) */
