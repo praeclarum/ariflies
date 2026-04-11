@@ -164,14 +164,13 @@ struct HitInfo {
   materialId: u32, // 0=ground, 1=ari, 2=water, 3=sky
 };
 
-fn waterSurfaceHeight(worldXZ: vec2f) -> f32 {
+fn waterSurfaceHeight() -> f32 {
   // Geometry is planar for now; wave controls are used in the shading normal.
-  let _ = worldXZ;
   return scene.waterLevel;
 }
 
 fn waterPlaneDistance(p: vec3f) -> f32 {
-  return p.y - waterSurfaceHeight(p.xz);
+  return p.y - waterSurfaceHeight();
 }
 
 fn sceneSDF(p: vec3f) -> HitInfo {

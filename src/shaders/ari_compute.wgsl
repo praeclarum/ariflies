@@ -33,7 +33,7 @@ const MAX_JUMP_HEIGHT: f32 = (JUMP_VELOCITY * JUMP_VELOCITY) / (2.0 * GRAVITY);
 const FORWARD_LERP: f32 = 15.0;
 const ARI_STARTING_HEALTH: f32 = 100.0;
 const WATER_DAMAGE_PER_SECOND: f32 = 10.0;
-const ARI_WATER_HIT_RADIUS: f32 = 0.3;
+const WATER_SURFACE_EPSILON: f32 = 0.02;
 
 // Terrain height lookup using textureSampleLevel (available in compute)
 fn worldToTerrainUV(worldXZ: vec2f) -> vec2f {
@@ -168,7 +168,8 @@ fn main() {
 
   // Ari takes continuous damage when submerged so jumping out of the water helps.
   var health = clamp(ari.health, 0.0, ARI_STARTING_HEALTH);
-  let submerged = (pos.y - ARI_WATER_HIT_RADIUS) < scene.waterLevel;
+  // Ari's root position tracks feet/ground contact, so use it directly.
+  let submerged = pos.y < (scene.waterLevel - WATER_SURFACE_EPSILON);
   if (submerged && game.gamePhase == PHASE_PLAYING) {
     health = max(0.0, health - WATER_DAMAGE_PER_SECOND * dt);
   }
