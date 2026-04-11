@@ -88,6 +88,7 @@ const ARI_EYE_RADIUS_X: f32 = 0.092;
 const ARI_EYE_RADIUS_Y: f32 = 0.084;
 const ARI_PUPIL_RADIUS_X: f32 = 0.035;
 const ARI_PUPIL_RADIUS_Y: f32 = 0.053;
+const ARI_POSE_WALK: u32 = 1u;
 
 fn ariEyeMask(lp: vec3f, bob: f32) -> f32 {
   let faceMask = smoothstep(ARI_EYE_Z_MIN, ARI_EYE_Z_MIN + 0.07, lp.z) *
@@ -163,11 +164,43 @@ fn sdAri(p: vec3f) -> f32 {
   let tailTip = lp - vec3f(tailSwing, 0.9, -1.2);
   let tail = sdCapsule(lp, vec3f(0.0, 0.6 + bob, -0.55), vec3f(tailSwing, 0.8 + bob, -1.1), 0.06);
 
-  // Legs (simplified)
-  let legFL = sdCapsule(lp, vec3f(-0.2, 0.0, 0.3), vec3f(-0.2, 0.5 + bob, 0.3), 0.08);
-  let legFR = sdCapsule(lp, vec3f(0.2, 0.0, 0.3), vec3f(0.2, 0.5 + bob, 0.3), 0.08);
-  let legBL = sdCapsule(lp, vec3f(-0.2, 0.0, -0.3), vec3f(-0.2, 0.5 + bob, -0.3), 0.08);
-  let legBR = sdCapsule(lp, vec3f(0.2, 0.0, -0.3), vec3f(0.2, 0.5 + bob, -0.3), 0.08);
+  // Legs: subtle diagonal-pair walk gait while moving.
+  let walkT = select(0.0, 1.0, ari.poseState == ARI_POSE_WALK);
+  let gaitPhase = ari.animPhase * 3.0;
+  let strideA = sin(gaitPhase);
+  let strideB = -strideA;
+  let strideDistance = 0.09 * walkT;
+  let stepLift = 0.07 * walkT;
+
+  let flFootY = max(0.0, strideA) * stepLift;
+  let frFootY = max(0.0, strideB) * stepLift;
+  let blFootY = max(0.0, strideB) * stepLift;
+  let brFootY = max(0.0, strideA) * stepLift;
+
+  let legFL = sdCapsule(
+    lp,
+    vec3f(-0.2, flFootY, 0.3 + strideA * strideDistance),
+    vec3f(-0.2, 0.5 + bob, 0.3 - strideA * strideDistance * 0.2),
+    0.08,
+  );
+  let legFR = sdCapsule(
+    lp,
+    vec3f(0.2, frFootY, 0.3 + strideB * strideDistance),
+    vec3f(0.2, 0.5 + bob, 0.3 - strideB * strideDistance * 0.2),
+    0.08,
+  );
+  let legBL = sdCapsule(
+    lp,
+    vec3f(-0.2, blFootY, -0.3 + strideB * strideDistance),
+    vec3f(-0.2, 0.5 + bob, -0.3 - strideB * strideDistance * 0.2),
+    0.08,
+  );
+  let legBR = sdCapsule(
+    lp,
+    vec3f(0.2, brFootY, -0.3 + strideA * strideDistance),
+    vec3f(0.2, 0.5 + bob, -0.3 - strideA * strideDistance * 0.2),
+    0.08,
+  );
   let legs = min(min(legFL, legFR), min(legBL, legBR));
 
   // Smooth blend everything
