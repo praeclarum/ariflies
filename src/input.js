@@ -24,6 +24,10 @@ import { INPUT_UNIFORMS_SIZE, KEY_W, KEY_A, KEY_S, KEY_D, KEY_SPACE, KEY_SHIFT }
  * @property {number} secondTouchLastX
  * @property {number} secondTouchLastY
  * @property {boolean} pendingTap - tap detected, inject space next frame
+ * @property {boolean} isMouseTrackpad - left-click drag acting as trackpad
+ * @property {number} mouseTrackpadStartX
+ * @property {number} mouseTrackpadStartY
+ * @property {number} mouseTrackpadStartTime
  */
 
 /** @type {Map<string, number>} */
@@ -59,6 +63,10 @@ export function createInput(canvas) {
     secondTouchLastX: 0,
     secondTouchLastY: 0,
     pendingTap: false,
+    isMouseTrackpad: false,
+    mouseTrackpadStartX: 0,
+    mouseTrackpadStartY: 0,
+    mouseTrackpadStartTime: 0,
   };
 
   window.addEventListener('keydown', (e) => {
@@ -71,18 +79,36 @@ export function createInput(canvas) {
     state.keysDown.delete(e.code);
   });
 
+  // ── Shared trackpad constants ──────────────────────────────────────────
+  const TAP_MAX_TIME = 300;   // ms
+  const TAP_MAX_DIST = 15;    // px
+  const ANALOG_RADIUS = 80;   // px drag distance for full speed
+
   // Camera rotation via right-click drag or middle-click drag
+  // Left-click drag acts as virtual trackpad for movement
   canvas.addEventListener('mousemove', (e) => {
     if (state.isDragging) {
       state.mouseDeltaX += e.movementX;
       state.mouseDeltaY += e.movementY;
     }
+    if (state.isMouseTrackpad) {
+      const dx = e.clientX - state.mouseTrackpadStartX;
+      const dy = e.clientY - state.mouseTrackpadStartY;
+      state.analogX = Math.max(-1, Math.min(1, dx / ANALOG_RADIUS));
+      state.analogZ = Math.max(-1, Math.min(1, -dy / ANALOG_RADIUS));
+    }
   });
 
   canvas.addEventListener('mousedown', (e) => {
     state.mouseButtons |= (1 << e.button);
-    // Right-click (button 2) or middle-click (button 1) starts camera drag
-    if (e.button === 2 || e.button === 1) {
+    if (e.button === 0) {
+      // Left-click: start virtual trackpad
+      state.isMouseTrackpad = true;
+      state.mouseTrackpadStartX = e.clientX;
+      state.mouseTrackpadStartY = e.clientY;
+      state.mouseTrackpadStartTime = performance.now();
+    } else if (e.button === 2 || e.button === 1) {
+      // Right-click or middle-click: camera drag
       state.isDragging = true;
       e.preventDefault();
     }
@@ -90,7 +116,19 @@ export function createInput(canvas) {
 
   canvas.addEventListener('mouseup', (e) => {
     state.mouseButtons &= ~(1 << e.button);
-    if (e.button === 2 || e.button === 1) {
+    if (e.button === 0 && state.isMouseTrackpad) {
+      // Check for click-tap (short + small movement)
+      const elapsed = performance.now() - state.mouseTrackpadStartTime;
+      const dx = e.clientX - state.mouseTrackpadStartX;
+      const dy = e.clientY - state.mouseTrackpadStartY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (elapsed < TAP_MAX_TIME && dist < TAP_MAX_DIST) {
+        state.pendingTap = true;
+      }
+      state.isMouseTrackpad = false;
+      state.analogX = 0;
+      state.analogZ = 0;
+    } else if (e.button === 2 || e.button === 1) {
       state.isDragging = false;
     }
   });
@@ -106,9 +144,6 @@ export function createInput(canvas) {
   }, { passive: false });
 
   // ── Touch input (mobile / tablet) ──────────────────────────────────────
-  const TAP_MAX_TIME = 300;   // ms
-  const TAP_MAX_DIST = 15;    // px
-  const ANALOG_RADIUS = 80;   // px drag distance for full speed
 
   canvas.addEventListener('touchstart', (e) => {
     e.preventDefault();
