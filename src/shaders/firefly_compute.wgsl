@@ -23,7 +23,7 @@ const BOB_FREQ: f32 = 2.0;
 const RETURN_STRENGTH: f32 = 0.5;
 // Must match FIREFLY_RENDER_RADIUS in raymarch.wgsl.
 const FIREFLY_RADIUS: f32 = 0.2;
-const FIREFLY_GROUND_CLEARANCE: f32 = 0.05;
+const FIREFLY_GROUND_CLEARANCE: f32 = 0.2;
 const MIN_ALTITUDE_BAND: f32 = 0.2;
 
 fn worldToTerrainUV(worldXZ: vec2f) -> vec2f {

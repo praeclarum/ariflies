@@ -31,6 +31,7 @@ const JUMP_VELOCITY: f32 = 6.0;
 const GRAVITY: f32 = 18.0;
 const MAX_JUMP_HEIGHT: f32 = (JUMP_VELOCITY * JUMP_VELOCITY) / (2.0 * GRAVITY);
 const FORWARD_LERP: f32 = 15.0;
+const WORLD_BOUND_MULTIPLIER: f32 = 2.0;
 const ARI_STARTING_HEALTH: f32 = 100.0;
 const WATER_DAMAGE_PER_SECOND: f32 = 10.0;
 const WATER_SURFACE_EPSILON: f32 = 0.02;
@@ -128,9 +129,10 @@ fn main() {
 
   // Clamp to world bounds (soft circle)
   let distXZ = length(pos.xz);
-  if (distXZ > scene.worldRadius) {
-    pos.x = pos.x * (scene.worldRadius / distXZ);
-    pos.z = pos.z * (scene.worldRadius / distXZ);
+  let maxMoveRadius = scene.worldRadius * WORLD_BOUND_MULTIPLIER;
+  if (distXZ > maxMoveRadius) {
+    pos.x = pos.x * (maxMoveRadius / distXZ);
+    pos.z = pos.z * (maxMoveRadius / distXZ);
   }
 
   // Update forward direction toward actual movement direction (velocity), not input
