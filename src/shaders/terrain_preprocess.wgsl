@@ -41,12 +41,12 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let worldTexelSize = params.worldRadius * 2.0 / texSizeF;
 
   // Height at this texel
-  let centerH = textureLoad(terrainTexture, vec2i(gid.xy), 0).r * params.maxHeight;
+  let iTexSize = vec2i(texSize);
+  let centerH = getHeightWithFade(vec2i(gid.xy), iTexSize, texSizeF);
 
   // Find max gradient in neighborhood by sampling along 8 directions
   // This is O(radius) per texel instead of O(radius²)
   var maxGrad2: f32 = 0.0;
-  let iTexSize = vec2i(texSize);
   let dirs = array<vec2i, 8>(
     vec2i(1, 0), vec2i(-1, 0), vec2i(0, 1), vec2i(0, -1),
     vec2i(1, 1), vec2i(-1, 1), vec2i(1, -1), vec2i(-1, -1),
@@ -57,7 +57,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     for (var step = 1; step <= RADIUS; step++) {
       let nx = clamp(i32(gid.x) + dir.x * step, 0, iTexSize.x - 1);
       let ny = clamp(i32(gid.y) + dir.y * step, 0, iTexSize.y - 1);
-      let nh = textureLoad(terrainTexture, vec2i(nx, ny), 0).r * params.maxHeight;
+      let nh = getHeightWithFade(vec2i(nx, ny), iTexSize, texSizeF);
       let worldDist = length(vec2f(f32(dir.x * step), f32(dir.y * step))) * worldTexelSize;
       let grad = abs(nh - centerH) / worldDist;
       maxGrad2 = max(maxGrad2, grad * grad);

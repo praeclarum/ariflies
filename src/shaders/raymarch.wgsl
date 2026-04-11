@@ -292,7 +292,7 @@ fn terrainNormal(p: vec3f) -> vec3f {
 
 // ── Ray marching ─────────────────────────────────────────────────────────
 
-const MAX_STEPS: i32 = 120;
+const MAX_STEPS: i32 = 196;
 const MAX_DIST: f32 = 120.0;
 const SURFACE_DIST: f32 = 0.002;
 const PRIMARY_MIN_STEP: f32 = 0.002;
@@ -317,7 +317,13 @@ fn rayMarch(ro: vec3f, rd: vec3f) -> RayResult {
     let hit = sceneSDF(p);
     result.dist = hit.dist;
 
-    let surfaceThreshold = SURFACE_DIST;
+    // Terrain gets a wider hit epsilon at grazing view angles.
+    // We later snap terrain hits to exact heightfield, so this avoids edge gaps
+    // without leaving visible floating intersections.
+    let grazing = 1.0 - abs(rd.y);
+    let grazingT = smoothstep(0.7, 1.0, grazing);
+    let terrainSurfaceThreshold = mix(SURFACE_DIST, SURFACE_DIST * 6.0, grazingT);
+    let surfaceThreshold = select(SURFACE_DIST, terrainSurfaceThreshold, hit.materialId == 0u);
 
     if (hit.dist < surfaceThreshold) {
       // Refine hit position to improve world-space stability at grazing angles.
