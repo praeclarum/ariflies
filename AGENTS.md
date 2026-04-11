@@ -715,14 +715,13 @@ Six GPU buffers hold all game state. See code for exact struct layouts.
 
 ```
 src/
-  main.js           ← WebGPU init, frame loop orchestration
   buffers.js        ← GPU buffer creation, struct sizes, staging readback
-  input.js          ← DOM event capture → input uniform buffer
   compute.js        ← 3 compute pipelines, shader loading, dispatch
-  renderer.js       ← fullscreen ray march render pipeline
-  game.js           ← session flow, timer, score readback, DOM updates
-  levels.js         ← level data loading, terrain texture, firefly zone expansion
   editor.js         ← level editor: terrain canvas, JSON editor, file I/O
+  game.js           ← session flow, timer, score readback, DOM updates
+  input.js          ← DOM event capture → input uniform buffer
+  levels.js         ← level data loading, terrain texture, firefly zone expansion
+  renderer.js       ← fullscreen ray march render pipeline
   shaders/
     camera_compute.wgsl
     ari_compute.wgsl
