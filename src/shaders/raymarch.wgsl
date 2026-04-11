@@ -95,6 +95,7 @@ struct SceneParams {
 @group(0) @binding(6) var terrainTexture: texture_2d<f32>;
 @group(0) @binding(7) var terrainSampler: sampler;
 @group(0) @binding(8) var slopeTexture: texture_2d<f32>;
+@group(0) @binding(9) var slopeSampler: sampler;
 
 // ── Vertex shader: fullscreen triangle ───────────────────────────────────
 
@@ -251,9 +252,8 @@ fn sceneSDF(p: vec3f) -> HitInfo {
   // Use precomputed per-texel conservative factor from slope texture.
   let terrainH = getTerrainHeight(p.xz);
   let uv = worldToTerrainUV(p.xz);
-  let slopeSize = vec2f(textureDimensions(slopeTexture, 0));
-  let slopeCoord = vec2i(clamp(uv * slopeSize, vec2f(0.0), slopeSize - vec2f(1.0)));
-  let slopeFactor = textureLoad(slopeTexture, slopeCoord, 0).r;
+  let clampedUV = clamp(uv, vec2f(0.001), vec2f(0.999));
+  let slopeFactor = textureSample(slopeTexture, slopeSampler, clampedUV).r;
   let ground = (p.y - terrainH) * slopeFactor;
 
   // Ari

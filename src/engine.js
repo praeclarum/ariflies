@@ -59,7 +59,12 @@ export async function createEngine(canvas) {
     return null;
   }
 
-  const device = await adapter.requestDevice();
+  /** @type {GPUDeviceDescriptor} */
+  const deviceDesc = {};
+  if (adapter.features.has('float32-filterable')) {
+    deviceDesc.requiredFeatures = ['float32-filterable'];
+  }
+  const device = await adapter.requestDevice(deviceDesc);
   const context = /** @type {GPUCanvasContext} */ (canvas.getContext('webgpu'));
   if (!context) {
     console.error('No WebGPU context');

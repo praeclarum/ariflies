@@ -49,8 +49,10 @@ export async function createRenderer(device, format, buffers) {
       { binding: 6, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
       // 7: Terrain sampler
       { binding: 7, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
-      // 8: Slope texture (r32float, unfilterable)
-      { binding: 8, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'unfilterable-float' } },
+      // 8: Slope texture (r32float, filterable with float32-filterable feature)
+      { binding: 8, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+      // 9: Slope sampler
+      { binding: 9, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
     ],
   });
 
@@ -85,6 +87,7 @@ export async function createRenderer(device, format, buffers) {
       { binding: 6, resource: buffers.terrainTexture.createView() },
       { binding: 7, resource: buffers.terrainSampler },
       { binding: 8, resource: buffers.slopeTexture.createView() },
+      { binding: 9, resource: buffers.terrainSampler },
     ],
   });
 
@@ -111,6 +114,7 @@ export function rebuildRenderBindGroup(device, renderer, buffers) {
       { binding: 6, resource: buffers.terrainTexture.createView() },
       { binding: 7, resource: buffers.terrainSampler },
       { binding: 8, resource: buffers.slopeTexture.createView() },
+      { binding: 9, resource: buffers.terrainSampler },
     ],
   });
 }
