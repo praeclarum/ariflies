@@ -486,19 +486,15 @@ fn applyFog(color: vec3f, dist: f32, rd: vec3f) -> vec3f {
 fn calcSoftShadow(ro: vec3f, rd: vec3f, mint: f32, maxt: f32, k: f32) -> f32 {
   var res = 1.0;
   var t = mint;
-  var ph = 1e10;  // Previous SDF value for improved penumbra
   
   for (var i = 0; i < 32; i++) {
     let p = ro + rd * t;
     let h = sceneSDF_cheap(p);
     
-    // Improved soft shadow with better penumbra estimation
-    let y = h * h / (2.0 * ph);
-    let d = sqrt(h * h - y * y);
-    res = min(res, k * d / max(0.0, t - y));
-    ph = h;
+    // Simple soft shadow: smaller h/t ratio = sharper shadow edge
+    res = min(res, k * max(h, 0.0) / t);
     
-    t += clamp(h, 0.02, 0.2);
+    t += clamp(h, 0.02, 0.25);
     
     if (res < 0.001 || t > maxt) { break; }
   }
