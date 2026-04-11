@@ -465,10 +465,9 @@ export async function readbackGameState(buffers) {
 
 /**
  * @typedef {Object} LevelBufferConfig
- * @property {{ radius: number, maxHeight: number, water: { level: number, color: [number, number, number], extinction: [number, number, number], ior: number, fresnelPower: number, roughness: number, reflectionStrength: number, refractionStrength: number, waveAmplitude: number, waveFrequency: number, waveSpeed: number, waveChoppiness: number, normalStrength: number, clarity: number } }} world
+ * @property {{ radius: number, maxHeight: number, fogDensity: number, ambientColor: [number, number, number], terrainFadeWidth: number, ambientStrength: number, fogSkyScale: number, pointLightDiffuseScale: number, water: { level: number, color: [number, number, number], extinction: [number, number, number], ior: number, fresnelPower: number, roughness: number, reflectionStrength: number, refractionStrength: number, waveAmplitude: number, waveFrequency: number, waveSpeed: number, waveChoppiness: number, normalStrength: number, clarity: number } }} world
  * @property {{ startPosition: [number, number, number] }} ari
  * @property {{ moon: { direction: [number, number, number], color: [number, number, number] }, moonShadowK: number, moonShadowMaxDistance: number, houseLights: Array<{ position: [number, number, number], color: [number, number, number], intensity: number, attenuation: number, shadowK: number, shadowMaxDistance: number }> }} lights
- * @property {{ fogDensity: number, ambientColor: [number, number, number], terrainFadeWidth: number, ambientStrength: number, fogSkyScale: number, pointLightDiffuseScale: number }} scene
  * @property {{ initialDistance: number, initialPitch: number }} camera
  * @property {{ duration: number }} game
  */
@@ -561,18 +560,18 @@ export function resetBuffersFromLevel(device, buffers, config, fireflyHomes, ter
     const mc = config.lights.moon.color;
     f[4] = mc[0]; f[5] = mc[1]; f[6] = mc[2]; f[7] = 0.0;
 
-    const ac = config.scene.ambientColor;
-    f[8] = ac[0]; f[9] = ac[1]; f[10] = ac[2]; f[11] = config.scene.fogDensity;
+    const ac = config.world.ambientColor;
+    f[8] = ac[0]; f[9] = ac[1]; f[10] = ac[2]; f[11] = config.world.fogDensity;
 
     // World params + ambient strength
     f[12] = config.world.radius;
     f[13] = config.world.maxHeight;
-    f[14] = config.scene.terrainFadeWidth;
-    f[15] = config.scene.ambientStrength;
+    f[14] = config.world.terrainFadeWidth;
+    f[15] = config.world.ambientStrength;
 
     // Composer controls
-    f[16] = config.scene.fogSkyScale;
-    f[17] = config.scene.pointLightDiffuseScale;
+    f[16] = config.world.fogSkyScale;
+    f[17] = config.world.pointLightDiffuseScale;
     f[18] = config.lights.moonShadowK;
     f[19] = config.lights.moonShadowMaxDistance;
 

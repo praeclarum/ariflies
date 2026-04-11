@@ -64,11 +64,10 @@ export const MAX_HOUSE_LIGHTS = 10;
  * @typedef {Object} LevelConfig
  * @property {string} name
  * @property {number} version
- * @property {{ radius: number, maxHeight: number, water: WaterConfig }} world
+ * @property {{ radius: number, maxHeight: number, water: WaterConfig, fogDensity: number, ambientColor: [number, number, number], terrainFadeWidth: number, ambientStrength: number, fogSkyScale: number, pointLightDiffuseScale: number }} world
  * @property {{ startPosition: [number, number, number] }} ari
  * @property {FireflyZone[]} fireflyZones
  * @property {{ moon: { direction: [number, number, number], color: [number, number, number] }, moonShadowK: number, moonShadowMaxDistance: number, houseLights: HouseLightConfig[] }} lights
- * @property {{ fogDensity: number, ambientColor: [number, number, number], terrainFadeWidth: number, ambientStrength: number, fogSkyScale: number, pointLightDiffuseScale: number }} scene
  * @property {{ initialDistance: number, initialPitch: number }} camera
  * @property {{ duration: number }} game
  */
@@ -99,6 +98,12 @@ export function defaultLevelConfig() {
     world: {
       radius: 15.0,
       maxHeight: 5.0,
+      fogDensity: 0.02,
+      ambientColor: [0.008, 0.01, 0.02],
+      terrainFadeWidth: 0.1,
+      ambientStrength: 0.15,
+      fogSkyScale: 1.2,
+      pointLightDiffuseScale: 0.5,
       water: {
         level: 0.75,
         color: [0.06, 0.2, 0.28],
@@ -134,14 +139,6 @@ export function defaultLevelConfig() {
           shadowMaxDistance: 45.0,
         },
       ],
-    },
-    scene: {
-      fogDensity: 0.02,
-      ambientColor: [0.008, 0.01, 0.02],
-      terrainFadeWidth: 0.1,
-      ambientStrength: 0.15,
-      fogSkyScale: 1.2,
-      pointLightDiffuseScale: 0.5,
     },
     camera: { initialDistance: 10.0, initialPitch: 0.6 },
     game: { duration: 120 },
@@ -237,6 +234,8 @@ async function loadTerrainImage(levelId) {
  */
 export function parseLevelConfig(json) {
   const defaults = defaultLevelConfig();
+  const worldSettings = json.world ?? {};
+  const sceneSettings = json.scene ?? {};
   const fallbackLight = defaults.lights.houseLights[0];
   const rawHouseLights = Array.isArray(json.lights?.houseLights)
     ? /** @type {any[]} */ (json.lights.houseLights)
@@ -253,9 +252,30 @@ export function parseLevelConfig(json) {
     name: typeof json.name === 'string' ? json.name : defaults.name,
     version: typeof json.version === 'number' ? json.version : defaults.version,
     world: {
-      radius: json.world?.radius ?? defaults.world.radius,
-      maxHeight: json.world?.maxHeight ?? defaults.world.maxHeight,
-      water: parseWaterConfig(json.world?.water, defaults.world.water),
+      radius: worldSettings.radius ?? defaults.world.radius,
+      maxHeight: worldSettings.maxHeight ?? defaults.world.maxHeight,
+      fogDensity: parseNumber(worldSettings.fogDensity ?? sceneSettings.fogDensity, defaults.world.fogDensity, 0.0, 2.0),
+      ambientColor: parseColor(worldSettings.ambientColor ?? sceneSettings.ambientColor, defaults.world.ambientColor),
+      terrainFadeWidth: parseNumber(
+        worldSettings.terrainFadeWidth ?? sceneSettings.terrainFadeWidth,
+        defaults.world.terrainFadeWidth,
+        0.001,
+        1.0,
+      ),
+      ambientStrength: parseNumber(
+        worldSettings.ambientStrength ?? sceneSettings.ambientStrength,
+        defaults.world.ambientStrength,
+        0.0,
+        2.0,
+      ),
+      fogSkyScale: parseNumber(worldSettings.fogSkyScale ?? sceneSettings.fogSkyScale, defaults.world.fogSkyScale, 0.0, 4.0),
+      pointLightDiffuseScale: parseNumber(
+        worldSettings.pointLightDiffuseScale ?? sceneSettings.pointLightDiffuseScale,
+        defaults.world.pointLightDiffuseScale,
+        0.0,
+        4.0,
+      ),
+      water: parseWaterConfig(worldSettings.water, defaults.world.water),
     },
     ari: {
       startPosition: Array.isArray(json.ari?.startPosition) && json.ari.startPosition.length === 3
@@ -275,19 +295,6 @@ export function parseLevelConfig(json) {
       houseLights: parsedHouseLights.length > 0
         ? parsedHouseLights
         : defaults.lights.houseLights.map((light) => ({ ...light })),
-    },
-    scene: {
-      fogDensity: parseNumber(json.scene?.fogDensity, defaults.scene.fogDensity, 0.0, 2.0),
-      ambientColor: parseColor(json.scene?.ambientColor, defaults.scene.ambientColor),
-      terrainFadeWidth: parseNumber(json.scene?.terrainFadeWidth, defaults.scene.terrainFadeWidth, 0.001, 1.0),
-      ambientStrength: parseNumber(json.scene?.ambientStrength, defaults.scene.ambientStrength, 0.0, 2.0),
-      fogSkyScale: parseNumber(json.scene?.fogSkyScale, defaults.scene.fogSkyScale, 0.0, 4.0),
-      pointLightDiffuseScale: parseNumber(
-        json.scene?.pointLightDiffuseScale,
-        defaults.scene.pointLightDiffuseScale,
-        0.0,
-        4.0,
-      ),
     },
     camera: {
       initialDistance: json.camera?.initialDistance ?? defaults.camera.initialDistance,

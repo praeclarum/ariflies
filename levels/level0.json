@@ -4,8 +4,18 @@
   "world": {
     "radius": 30,
     "maxHeight": 5,
+    "fogDensity": 0.02,
+    "ambientColor": [
+      0.008,
+      0.01,
+      0.02
+    ],
+    "terrainFadeWidth": 0.1,
+    "ambientStrength": 0.15,
+    "fogSkyScale": 1.2,
+    "pointLightDiffuseScale": 0.5,
     "water": {
-      "level": 0.75,
+      "level": 0.5,
       "color": [
         0.06,
         0.2,
@@ -23,7 +33,7 @@
       "refractionStrength": 0.9,
       "waveAmplitude": 0.06,
       "waveFrequency": 0.95,
-      "waveSpeed": 0.45,
+      "waveSpeed": 2.0,
       "waveChoppiness": 0.75,
       "normalStrength": 0.8,
       "clarity": 0.78
@@ -114,18 +124,6 @@
         "shadowMaxDistance": 30
       }
     ]
-  },
-  "scene": {
-    "fogDensity": 0.02,
-    "ambientColor": [
-      0.008,
-      0.01,
-      0.02
-    ],
-    "terrainFadeWidth": 0.1,
-    "ambientStrength": 0.15,
-    "fogSkyScale": 1.2,
-    "pointLightDiffuseScale": 0.5
   },
   "camera": {
     "initialDistance": 10,

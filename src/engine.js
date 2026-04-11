@@ -141,7 +141,7 @@ export function loadLevel(engine, levelData) {
   preprocessTerrain(
     engine.device, engine.computePipelines, engine.buffers,
     levelData.config.world.radius, levelData.config.world.maxHeight,
-    levelData.config.scene.terrainFadeWidth,
+    levelData.config.world.terrainFadeWidth,
   );
 
   // Reset game session if one exists
