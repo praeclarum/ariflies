@@ -33,6 +33,24 @@ export const MAX_HOUSE_LIGHTS = 10;
  */
 
 /**
+ * @typedef {Object} WaterConfig
+ * @property {number} level
+ * @property {[number, number, number]} color
+ * @property {[number, number, number]} extinction
+ * @property {number} ior
+ * @property {number} fresnelPower
+ * @property {number} roughness
+ * @property {number} reflectionStrength
+ * @property {number} refractionStrength
+ * @property {number} waveAmplitude
+ * @property {number} waveFrequency
+ * @property {number} waveSpeed
+ * @property {number} waveChoppiness
+ * @property {number} normalStrength
+ * @property {number} clarity
+ */
+
+/**
  * @typedef {Object} HouseLightConfig
  * @property {[number, number, number]} position
  * @property {[number, number, number]} color
@@ -46,7 +64,7 @@ export const MAX_HOUSE_LIGHTS = 10;
  * @typedef {Object} LevelConfig
  * @property {string} name
  * @property {number} version
- * @property {{ radius: number, maxHeight: number }} world
+ * @property {{ radius: number, maxHeight: number, water: WaterConfig }} world
  * @property {{ startPosition: [number, number, number] }} ari
  * @property {FireflyZone[]} fireflyZones
  * @property {{ moon: { direction: [number, number, number], color: [number, number, number] }, moonShadowK: number, moonShadowMaxDistance: number, houseLights: HouseLightConfig[] }} lights
@@ -78,7 +96,26 @@ export function defaultLevelConfig() {
   return {
     name: 'Backyard',
     version: 1,
-    world: { radius: 15.0, maxHeight: 5.0 },
+    world: {
+      radius: 15.0,
+      maxHeight: 5.0,
+      water: {
+        level: 0.75,
+        color: [0.06, 0.2, 0.28],
+        extinction: [0.25, 0.11, 0.05],
+        ior: 1.333,
+        fresnelPower: 5.0,
+        roughness: 0.08,
+        reflectionStrength: 1.0,
+        refractionStrength: 0.9,
+        waveAmplitude: 0.06,
+        waveFrequency: 0.95,
+        waveSpeed: 0.45,
+        waveChoppiness: 0.75,
+        normalStrength: 0.8,
+        clarity: 0.78,
+      },
+    },
     ari: { startPosition: [0, 0, 0] },
     fireflyZones: [
       { center: [0, 1.5, 0], radius: 12.0, count: 50, minHeight: 0.5, maxHeight: 2.5 },
@@ -218,6 +255,7 @@ export function parseLevelConfig(json) {
     world: {
       radius: json.world?.radius ?? defaults.world.radius,
       maxHeight: json.world?.maxHeight ?? defaults.world.maxHeight,
+      water: parseWaterConfig(json.world?.water, defaults.world.water),
     },
     ari: {
       startPosition: Array.isArray(json.ari?.startPosition) && json.ari.startPosition.length === 3
@@ -258,6 +296,30 @@ export function parseLevelConfig(json) {
     game: {
       duration: json.game?.duration ?? defaults.game.duration,
     },
+  };
+}
+
+/**
+ * @param {any} water
+ * @param {WaterConfig} fallback
+ * @returns {WaterConfig}
+ */
+function parseWaterConfig(water, fallback) {
+  return {
+    level: parseNumber(water?.level, fallback.level, 0.0001, 100.0),
+    color: parseColor(water?.color, fallback.color),
+    extinction: parseColor(water?.extinction, fallback.extinction),
+    ior: parseNumber(water?.ior, fallback.ior, 1.0, 2.0),
+    fresnelPower: parseNumber(water?.fresnelPower, fallback.fresnelPower, 0.5, 16.0),
+    roughness: parseNumber(water?.roughness, fallback.roughness, 0.0, 1.0),
+    reflectionStrength: parseNumber(water?.reflectionStrength, fallback.reflectionStrength, 0.0, 2.0),
+    refractionStrength: parseNumber(water?.refractionStrength, fallback.refractionStrength, 0.0, 2.0),
+    waveAmplitude: parseNumber(water?.waveAmplitude, fallback.waveAmplitude, 0.0, 2.0),
+    waveFrequency: parseNumber(water?.waveFrequency, fallback.waveFrequency, 0.0, 32.0),
+    waveSpeed: parseNumber(water?.waveSpeed, fallback.waveSpeed, 0.0, 16.0),
+    waveChoppiness: parseNumber(water?.waveChoppiness, fallback.waveChoppiness, 0.0, 4.0),
+    normalStrength: parseNumber(water?.normalStrength, fallback.normalStrength, 0.0, 4.0),
+    clarity: parseNumber(water?.clarity, fallback.clarity, 0.0, 1.0),
   };
 }
 

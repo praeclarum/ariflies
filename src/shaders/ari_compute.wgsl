@@ -8,6 +8,7 @@
 @group(0) @binding(3) var<uniform> scene: SceneParams;
 @group(0) @binding(4) var terrainTexture: texture_2d<f32>;
 @group(0) @binding(5) var terrainSampler: sampler;
+@group(0) @binding(6) var<storage, read_write> game: GameStateAtomic;
 
 // Key bit constants — must match JS
 const KEY_W: u32     = 0x01u;
@@ -21,6 +22,8 @@ const POSE_IDLE: u32   = 0u;
 const POSE_WALK: u32   = 1u;
 const POSE_JUMP: u32   = 4u;
 const POSE_LAND: u32   = 5u;
+const PHASE_PLAYING: u32 = 1u;
+const PHASE_ENDED: u32 = 2u;
 
 const MOVE_SPEED: f32 = 5.0;
 const FRICTION: f32 = 8.0;
@@ -28,6 +31,9 @@ const JUMP_VELOCITY: f32 = 6.0;
 const GRAVITY: f32 = 18.0;
 const MAX_JUMP_HEIGHT: f32 = (JUMP_VELOCITY * JUMP_VELOCITY) / (2.0 * GRAVITY);
 const FORWARD_LERP: f32 = 15.0;
+const ARI_STARTING_HEALTH: f32 = 100.0;
+const WATER_DAMAGE_PER_SECOND: f32 = 10.0;
+const ARI_WATER_HIT_RADIUS: f32 = 0.3;
 
 // Terrain height lookup using textureSampleLevel (available in compute)
 fn worldToTerrainUV(worldXZ: vec2f) -> vec2f {
@@ -160,6 +166,13 @@ fn main() {
     }
   }
 
+  // Ari takes continuous damage when submerged so jumping out of the water helps.
+  var health = clamp(ari.health, 0.0, ARI_STARTING_HEALTH);
+  let submerged = (pos.y - ARI_WATER_HIT_RADIUS) < scene.waterLevel;
+  if (submerged && game.gamePhase == PHASE_PLAYING) {
+    health = max(0.0, health - WATER_DAMAGE_PER_SECOND * dt);
+  }
+
   // Write back
   ari.position = pos;
   ari.forwardX = forward.x;
@@ -171,4 +184,10 @@ fn main() {
   ari.animPhase = animPhase;
   ari.tailPhase = tailPhase;
   ari.maxJumpHeight = MAX_JUMP_HEIGHT;
+  ari.health = health;
+
+  game.health = health;
+  if (health <= 0.0 && game.gamePhase == PHASE_PLAYING) {
+    game.gamePhase = PHASE_ENDED;
+  }
 }

@@ -161,8 +161,18 @@ const FIREFLY_COUNT: u32 = 50u;
 
 struct HitInfo {
   dist: f32,
-  materialId: u32, // 0=ground, 1=ari, 2=sky
+  materialId: u32, // 0=ground, 1=ari, 2=water, 3=sky
 };
+
+fn waterSurfaceHeight(worldXZ: vec2f) -> f32 {
+  // Geometry is planar for now; wave controls are used in the shading normal.
+  let _ = worldXZ;
+  return scene.waterLevel;
+}
+
+fn waterPlaneDistance(p: vec3f) -> f32 {
+  return p.y - waterSurfaceHeight(p.xz);
+}
 
 fn sceneSDF(p: vec3f) -> HitInfo {
   // Terrain heightfield distance estimate.
@@ -175,11 +185,15 @@ fn sceneSDF(p: vec3f) -> HitInfo {
 
   // Ari
   let ariDist = sdAri(p);
+  let waterDist = abs(waterPlaneDistance(p));
 
   var hit: HitInfo;
-  if (ariDist < ground) {
+  if (ariDist < ground && ariDist < waterDist) {
     hit.dist = ariDist;
     hit.materialId = 1u;
+  } else if (waterDist < ground) {
+    hit.dist = waterDist;
+    hit.materialId = 2u;
   } else {
     hit.dist = ground;
     hit.materialId = 0u;
@@ -234,7 +248,7 @@ fn rayMarch(ro: vec3f, rd: vec3f) -> RayResult {
   var result: RayResult;
   result.totalDist = 0.0;
   result.hit = false;
-  result.materialId = 2u; // sky by default
+  result.materialId = 3u; // sky by default
   var prevTotalDist = 0.0;
   var prevDist = 1e9;
 
@@ -575,6 +589,137 @@ fn shade(p: vec3f, normal: vec3f, materialId: u32) -> vec3f {
   return color;
 }
 
+fn waterNormal(worldXZ: vec2f, time: f32) -> vec3f {
+  let amp = scene.waterWaveAmplitude;
+  let freq = max(scene.waterWaveFrequency, 0.0001);
+  let speed = scene.waterWaveSpeed;
+  let chop = scene.waterWaveChoppiness;
+
+  let dir1 = normalize(vec2f(0.84, 0.54));
+  let dir2 = normalize(vec2f(-0.62, 0.78));
+
+  let phase1 = dot(worldXZ, dir1) * freq + time * speed;
+  let phase2 = dot(worldXZ, dir2) * (freq * 1.73) - time * speed * 1.21;
+
+  let dhdx = amp * (
+    cos(phase1) * freq * dir1.x +
+    cos(phase2) * (freq * 1.73) * dir2.x * (0.45 + 0.55 * chop)
+  );
+  let dhdz = amp * (
+    cos(phase1) * freq * dir1.y +
+    cos(phase2) * (freq * 1.73) * dir2.y * (0.45 + 0.55 * chop)
+  );
+
+  let normalStrength = max(scene.waterNormalStrength, 0.0);
+  return normalize(vec3f(-dhdx * normalStrength, 1.0, -dhdz * normalStrength));
+}
+
+struct TraceColorResult {
+  color: vec3f,
+  depth: f32,
+};
+
+fn traceSceneColor(ro: vec3f, rd: vec3f) -> TraceColorResult {
+  let result = rayMarch(ro, rd);
+  var out: TraceColorResult;
+  out.depth = MAX_DIST;
+
+  if (result.hit) {
+    var hitPos = ro + rd * result.totalDist;
+    var hitDist = result.totalDist;
+
+    if (result.materialId == 0u) {
+      hitPos = vec3f(hitPos.x, getTerrainHeight(hitPos.xz), hitPos.z);
+      hitDist = length(hitPos - ro);
+    }
+
+    // Do not recurse infinitely on water reflections.
+    if (result.materialId == 2u) {
+      out.color = skyColor(rd);
+      out.depth = hitDist;
+      return out;
+    }
+
+    let normal = select(sceneNormal(hitPos), terrainNormal(hitPos), result.materialId == 0u);
+    out.color = applyFog(shade(hitPos, normal, result.materialId), hitDist, rd);
+    out.depth = hitDist;
+  } else {
+    out.color = skyColor(rd);
+  }
+
+  out.color += fireflyGlow(ro, rd, out.depth);
+  return out;
+}
+
+fn shadeWater(p: vec3f, rd: vec3f, normal: vec3f) -> vec3f {
+  let viewDir = normalize(-rd);
+  let waterIor = max(scene.waterIor, 1.0001);
+  let roughness = clamp(scene.waterRoughness, 0.0, 1.0);
+
+  let cosTheta = clamp(dot(viewDir, normal), 0.0, 1.0);
+  let iorTerm = (waterIor - 1.0) / (waterIor + 1.0);
+  let fresnelBase = iorTerm * iorTerm;
+  let fresnel = clamp(
+    fresnelBase + (1.0 - fresnelBase) * pow(1.0 - cosTheta, scene.waterFresnelPower),
+    0.0,
+    1.0,
+  );
+
+  var reflectDir = reflect(rd, normal);
+  reflectDir = normalize(mix(reflectDir, normal, vec3f(roughness * 0.35)));
+  let reflectOrigin = p + normal * 0.03;
+  let reflected = traceSceneColor(reflectOrigin, reflectDir);
+  let reflectionColor = reflected.color;
+
+  let entering = dot(rd, normal) < 0.0;
+  let refractNormal = select(-normal, normal, entering);
+  let eta = select(waterIor, 1.0 / waterIor, entering);
+  let refractedRaw = refract(rd, refractNormal, eta);
+
+  var refractionColor = scene.waterColor;
+  if (length(refractedRaw) > 0.0001) {
+    let refractDir = normalize(mix(refractedRaw, rd, vec3f(roughness * 0.2)));
+    let refractOrigin = p - refractNormal * 0.03;
+    let refracted = traceSceneColor(refractOrigin, refractDir);
+    let absorb = exp(-scene.waterExtinction * refracted.depth);
+    let clarity = clamp(scene.waterClarity, 0.0, 1.0);
+    let tintedRefraction = refracted.color * absorb;
+    refractionColor = mix(scene.waterColor, tintedRefraction, vec3f(clarity));
+  }
+
+  var specular = vec3f(0.0);
+  let specPower = mix(220.0, 18.0, roughness);
+
+  let moonDir = normalize(scene.moonDir);
+  let moonHalf = normalize(moonDir + viewDir);
+  let moonSpec = pow(max(dot(normal, moonHalf), 0.0), specPower);
+  specular += scene.moonColor * moonSpec * 1.4;
+
+  for (var i = 0; i < 10; i++) {
+    let light = scene.houseLights[i];
+    if (light.intensity <= 0.0001) { continue; }
+
+    let toLight = light.position - p;
+    let lightDist = length(toLight);
+    if (lightDist <= 0.001) { continue; }
+
+    let lightDir = toLight / lightDist;
+    let lightHalf = normalize(lightDir + viewDir);
+    let attenuation = light.intensity / (1.0 + lightDist * lightDist * max(light.attenuation, 0.0001));
+    let lightSpec = pow(max(dot(normal, lightHalf), 0.0), specPower);
+    specular += light.color * lightSpec * attenuation;
+  }
+
+  var waterColor =
+    reflectionColor * fresnel * scene.waterReflectionStrength +
+    refractionColor * (1.0 - fresnel) * scene.waterRefractionStrength;
+
+  waterColor += specular;
+  waterColor += scene.waterColor * (0.04 + 0.12 * (1.0 - cosTheta));
+
+  return waterColor;
+}
+
 // ── Firefly glow ─────────────────────────────────────────────────────────
 
 const FIREFLY_RENDER_RADIUS: f32 = 0.2;
@@ -654,14 +799,18 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
       hitDist = length(hitPos - eye);
     }
 
-    // Use analytic normal for terrain (smooth, no noise), SDF normal for Ari
     var normal: vec3f;
     if (result.materialId == 0u) {
       normal = terrainNormal(hitPos);
+      color = shade(hitPos, normal, result.materialId);
+    } else if (result.materialId == 2u) {
+      normal = waterNormal(hitPos.xz, input.time);
+      color = shadeWater(hitPos, rd, normal);
     } else {
       normal = sceneNormal(hitPos);
+      color = shade(hitPos, normal, result.materialId);
     }
-    color = shade(hitPos, normal, result.materialId);
+
     color = applyFog(color, hitDist, rd);
     sceneDepth = hitDist;
   } else {

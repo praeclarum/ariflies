@@ -88,6 +88,7 @@ export async function createComputePipelines(device, buffers) {
       { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
       { binding: 4, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'float' } },
       { binding: 5, visibility: GPUShaderStage.COMPUTE, sampler: { type: 'filtering' } },
+      { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
     ],
   });
   const ariPipeline = device.createComputePipeline({
@@ -105,6 +106,7 @@ export async function createComputePipelines(device, buffers) {
       { binding: 3, resource: { buffer: buffers.scene } },
       { binding: 4, resource: buffers.terrainTexture.createView() },
       { binding: 5, resource: buffers.terrainSampler },
+      { binding: 6, resource: { buffer: buffers.game } },
     ],
   });
 
@@ -224,6 +226,7 @@ export function rebuildAriBindGroup(device, pipelines, buffers) {
       { binding: 3, resource: { buffer: buffers.scene } },
       { binding: 4, resource: buffers.terrainTexture.createView() },
       { binding: 5, resource: buffers.terrainSampler },
+      { binding: 6, resource: { buffer: buffers.game } },
     ],
   });
 }

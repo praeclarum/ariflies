@@ -16,8 +16,11 @@ import { GAME_STATE_SIZE, PHASE_WAITING, PHASE_PLAYING, PHASE_ENDED, readbackGam
  * @property {number} phase
  * @property {number} timeRemaining
  * @property {number} score
+ * @property {number} health
+ * @property {'time'|'health'} endReason
  * @property {boolean} readbackPending
  * @property {HTMLElement|null} scoreEl
+ * @property {HTMLElement|null} healthEl
  * @property {HTMLElement|null} timerEl
  * @property {HTMLElement|null} messageEl
  */
@@ -30,6 +33,7 @@ import { GAME_STATE_SIZE, PHASE_WAITING, PHASE_PLAYING, PHASE_ENDED, readbackGam
  */
 export function createGame(buffers, options) {
   const scoreEl = document.getElementById('score');
+  const healthEl = document.getElementById('health');
   const timerEl = document.getElementById('timer');
   const messageEl = document.getElementById('message');
   const duration = options?.duration ?? 120.0;
@@ -41,8 +45,11 @@ export function createGame(buffers, options) {
     phase: PHASE_PLAYING,
     timeRemaining: duration,
     score: 0,
+    health: 100,
+    endReason: 'time',
     readbackPending: false,
     scoreEl,
+    healthEl,
     timerEl,
     messageEl,
   };
@@ -57,10 +64,16 @@ export function createGame(buffers, options) {
  * @param {number} dt
  */
 export function writeGameState(device, buffers, session, dt) {
+  if (session.phase === PHASE_PLAYING && session.health <= 0) {
+    session.phase = PHASE_ENDED;
+    session.endReason = 'health';
+  }
+
   if (session.phase === PHASE_PLAYING) {
     session.timeRemaining = Math.max(0, session.timeRemaining - dt);
     if (session.timeRemaining <= 0) {
       session.phase = PHASE_ENDED;
+      session.endReason = 'time';
     }
   }
 
@@ -75,6 +88,7 @@ export function writeGameState(device, buffers, session, dt) {
   u[1] = 0; // catchThisFrame reset
   u[2] = session.phase;
   f[3] = session.timeRemaining;
+  f[4] = session.health;
   device.queue.writeBuffer(buffers.game, 0, data);
 }
 
@@ -89,6 +103,13 @@ export function requestScoreReadback(buffers, session) {
 
   readbackGameState(buffers).then((state) => {
     session.score = state.score;
+    session.health = Math.max(0, state.health);
+
+    if (state.gamePhase === PHASE_ENDED && session.phase === PHASE_PLAYING) {
+      session.phase = PHASE_ENDED;
+      session.endReason = session.health <= 0 ? 'health' : 'time';
+    }
+
     session.readbackPending = false;
   }).catch(() => {
     session.readbackPending = false;
@@ -104,6 +125,11 @@ export function updateUI(session) {
     session.scoreEl.textContent = `Score: ${session.score}`;
   }
 
+  if (session.healthEl) {
+    const healthInt = Math.max(0, Math.round(session.health));
+    session.healthEl.textContent = `Health: ${healthInt}`;
+  }
+
   if (session.timerEl) {
     const mins = Math.floor(session.timeRemaining / 60);
     const secs = Math.floor(session.timeRemaining % 60);
@@ -113,7 +139,11 @@ export function updateUI(session) {
   if (session.messageEl) {
     if (session.phase === PHASE_ENDED) {
       session.messageEl.style.display = 'block';
-      session.messageEl.textContent = `Time's up!\nFinal score: ${session.score}`;
+      if (session.endReason === 'health') {
+        session.messageEl.textContent = `Health depleted!\nFinal score: ${session.score}`;
+      } else {
+        session.messageEl.textContent = `Time's up!\nFinal score: ${session.score}`;
+      }
     } else {
       session.messageEl.style.display = 'none';
     }

@@ -149,6 +149,8 @@ export function loadLevel(engine, levelData) {
     engine.gameSession.phase = PHASE_PLAYING;
     engine.gameSession.timeRemaining = levelData.config.game.duration;
     engine.gameSession.score = 0;
+    engine.gameSession.health = 100;
+    engine.gameSession.endReason = 'time';
   }
 
   // Reset timing
@@ -236,7 +238,11 @@ export function runOneFrame(engine) {
     const data = new ArrayBuffer(GAME_STATE_SIZE);
     const u = new Uint32Array(data);
     const f = new Float32Array(data);
-    u[0] = 0; u[1] = 0; u[2] = PHASE_PLAYING; f[3] = 9999.0;
+    u[0] = 0;
+    u[1] = 0;
+    u[2] = PHASE_PLAYING;
+    f[3] = 9999.0;
+    f[4] = 100.0;
     device.queue.writeBuffer(buffers.game, 0, data);
   }
 

@@ -56,7 +56,7 @@ struct AriState {
   animPhase: f32,     // +44
   tailPhase: f32,     // +48
   maxJumpHeight: f32, // +52
-  _pad1: f32,         // +56
+  health: f32,        // +56
   _pad2: f32,         // +60
 };
 
@@ -74,6 +74,7 @@ struct GameStateAtomic {
   catchThisFrame: atomic<u32>, // +4
   gamePhase: u32,     // +8
   timeRemaining: f32, // +12
+  health: f32,        // +16
 };
 
 struct HouseLightData {
@@ -102,6 +103,22 @@ struct SceneParams {
   pointLightDiffuseScale: f32,
   moonShadowK: f32,
   moonShadowMaxDistance: f32,
+  waterColor: vec3f,
+  waterLevel: f32,
+  waterExtinction: vec3f,
+  waterIor: f32,
+  waterFresnelPower: f32,
+  waterRoughness: f32,
+  waterReflectionStrength: f32,
+  waterRefractionStrength: f32,
+  waterWaveAmplitude: f32,
+  waterWaveFrequency: f32,
+  waterWaveSpeed: f32,
+  waterWaveChoppiness: f32,
+  waterNormalStrength: f32,
+  waterClarity: f32,
+  _pad2: f32,
+  _pad3: f32,
   houseLights: array<HouseLightData, 10>,
 };
 `;
@@ -123,7 +140,7 @@ export const INPUT_UNIFORMS_SIZE = 48;
 /** CameraState: eye(vec3f) + _pad + target(vec3f) + _pad + orbitYaw(f32) + orbitPitch(f32) + distance(f32) + fov(f32) */
 export const CAMERA_STATE_SIZE = 48;
 
-/** AriState: position(vec3f) + facing(f32) + velocity(vec3f) + speed(f32) + groundY(f32) + poseState(u32) + jumpT(f32) + animPhase(f32) + tailPhase(f32) + maxJumpHeight(f32) + _pad(2×f32) */
+/** AriState: position(vec3f) + forwardX(f32) + velocity(vec3f) + forwardZ(f32) + groundY(f32) + poseState(u32) + jumpT(f32) + animPhase(f32) + tailPhase(f32) + maxJumpHeight(f32) + health(f32) + _pad(f32) */
 export const ARI_STATE_SIZE = 64;
 
 /** Default max jump height in meters (from JUMP_VELOCITY^2 / (2 * GRAVITY)) */
@@ -133,11 +150,11 @@ export const ARI_DEFAULT_MAX_JUMP_HEIGHT = 1.0;
 export const FIREFLY_STRIDE = 48;
 export const FIREFLY_ARRAY_SIZE = FIREFLY_STRIDE * MAX_FIREFLIES;
 
-/** GameState: score(u32) + catchThisFrame(u32) + gamePhase(u32) + timeRemaining(f32) */
-export const GAME_STATE_SIZE = 16;
+/** GameState: score(u32) + catchThisFrame(u32) + gamePhase(u32) + timeRemaining(f32) + health(f32) */
+export const GAME_STATE_SIZE = 20;
 
-/** SceneParams header float count (5 vec4 entries) */
-export const SCENE_HEADER_FLOATS = 20;
+/** SceneParams header float count (10 vec4 entries, includes water params) */
+export const SCENE_HEADER_FLOATS = 40;
 /** Per-house-light float count (3 vec4 entries) */
 export const HOUSE_LIGHT_STRIDE_FLOATS = 12;
 /** SceneParams byte size: header + fixed-cap house lights */
@@ -303,9 +320,11 @@ export function createBuffers(device) {
     f[8] = 0.0;
     new Uint32Array(data, 36, 1)[0] = POSE_IDLE;
     f[10] = 0.0; f[11] = 0.0;
-    // tailPhase + maxJumpHeight + padding
+    // tailPhase + maxJumpHeight + health + padding
     f[12] = 0.0;
     f[13] = ARI_DEFAULT_MAX_JUMP_HEIGHT;
+    f[14] = 100.0;
+    f[15] = 0.0;
     device.queue.writeBuffer(ari, 0, data);
   }
 
@@ -343,7 +362,7 @@ export function createBuffers(device) {
     device.queue.writeBuffer(fireflies, 0, data);
   }
 
-  // GameState: waiting phase, 120 seconds
+  // GameState: waiting phase, 120 seconds, full health
   {
     const data = new ArrayBuffer(GAME_STATE_SIZE);
     const u = new Uint32Array(data);
@@ -352,10 +371,11 @@ export function createBuffers(device) {
     u[1] = 0;              // catchThisFrame
     u[2] = PHASE_PLAYING;  // gamePhase — start playing immediately for now
     f[3] = 120.0;          // timeRemaining
+    f[4] = 100.0;          // health
     device.queue.writeBuffer(game, 0, data);
   }
 
-  // SceneParams: moonlight + world/scene tuning + fixed-cap house light array
+  // SceneParams: moonlight + world/scene tuning + water + fixed-cap house light array
   {
     const data = new ArrayBuffer(SCENE_PARAMS_SIZE);
     const f = new Float32Array(data);
@@ -371,6 +391,17 @@ export function createBuffers(device) {
     f[12] = 15.0; f[13] = 5.0; f[14] = 0.1; f[15] = 0.15;
     // fogSkyScale, pointLightDiffuseScale, moonShadowK, moonShadowMaxDistance
     f[16] = 1.2; f[17] = 0.5; f[18] = 5.5; f[19] = 40.0;
+
+    // waterColor + waterLevel
+    f[20] = 0.06; f[21] = 0.2; f[22] = 0.28; f[23] = 0.75;
+    // waterExtinction + waterIor
+    f[24] = 0.25; f[25] = 0.11; f[26] = 0.05; f[27] = 1.333;
+    // water Fresnel/roughness/strength controls
+    f[28] = 5.0; f[29] = 0.08; f[30] = 1.0; f[31] = 0.9;
+    // water wave controls
+    f[32] = 0.06; f[33] = 0.95; f[34] = 0.45; f[35] = 0.75;
+    // water normal/clarity + padding
+    f[36] = 0.8; f[37] = 0.78; f[38] = 0.0; f[39] = 0.0;
 
     // Initialize all house lights to inactive.
     for (let i = 0; i < MAX_HOUSE_LIGHTS; i++) {
@@ -407,7 +438,7 @@ export function copyGameStateToStaging(encoder, buffers) {
  * Async readback of the staging buffer. Returns score and game state.
  * Must be called after the command buffer containing the copy has been submitted.
  * @param {Buffers} buffers
- * @returns {Promise<{score: number, catchThisFrame: number, gamePhase: number, timeRemaining: number}>}
+ * @returns {Promise<{score: number, catchThisFrame: number, gamePhase: number, timeRemaining: number, health: number}>}
  */
 export async function readbackGameState(buffers) {
   await buffers.gameStaging.mapAsync(GPUMapMode.READ);
@@ -419,6 +450,7 @@ export async function readbackGameState(buffers) {
     catchThisFrame: data[1],
     gamePhase: data[2],
     timeRemaining: fdata[3],
+    health: fdata[4],
   };
 }
 
@@ -433,7 +465,7 @@ export async function readbackGameState(buffers) {
 
 /**
  * @typedef {Object} LevelBufferConfig
- * @property {{ radius: number, maxHeight: number }} world
+ * @property {{ radius: number, maxHeight: number, water: { level: number, color: [number, number, number], extinction: [number, number, number], ior: number, fresnelPower: number, roughness: number, reflectionStrength: number, refractionStrength: number, waveAmplitude: number, waveFrequency: number, waveSpeed: number, waveChoppiness: number, normalStrength: number, clarity: number } }} world
  * @property {{ startPosition: [number, number, number] }} ari
  * @property {{ moon: { direction: [number, number, number], color: [number, number, number] }, moonShadowK: number, moonShadowMaxDistance: number, houseLights: Array<{ position: [number, number, number], color: [number, number, number], intensity: number, attenuation: number, shadowK: number, shadowMaxDistance: number }> }} lights
  * @property {{ fogDensity: number, ambientColor: [number, number, number], terrainFadeWidth: number, ambientStrength: number, fogSkyScale: number, pointLightDiffuseScale: number }} scene
@@ -474,6 +506,8 @@ export function resetBuffersFromLevel(device, buffers, config, fireflyHomes, ter
     f[8] = 0.0; // groundY
     new Uint32Array(data, 36, 1)[0] = POSE_IDLE;
     f[13] = ARI_DEFAULT_MAX_JUMP_HEIGHT;
+    f[14] = 100.0;
+    f[15] = 0.0;
     device.queue.writeBuffer(buffers.ari, 0, data);
   }
 
@@ -504,7 +538,7 @@ export function resetBuffersFromLevel(device, buffers, config, fireflyHomes, ter
     device.queue.writeBuffer(buffers.fireflies, 0, data);
   }
 
-  // GameState: reset score, start playing
+  // GameState: reset score, start playing, full health
   {
     const data = new ArrayBuffer(GAME_STATE_SIZE);
     const u = new Uint32Array(data);
@@ -513,6 +547,7 @@ export function resetBuffersFromLevel(device, buffers, config, fireflyHomes, ter
     u[1] = 0; // catchThisFrame
     u[2] = PHASE_PLAYING;
     f[3] = config.game.duration;
+    f[4] = 100.0;
     device.queue.writeBuffer(buffers.game, 0, data);
   }
 
@@ -540,6 +575,32 @@ export function resetBuffersFromLevel(device, buffers, config, fireflyHomes, ter
     f[17] = config.scene.pointLightDiffuseScale;
     f[18] = config.lights.moonShadowK;
     f[19] = config.lights.moonShadowMaxDistance;
+
+    // Water controls
+    f[20] = config.world.water.color[0];
+    f[21] = config.world.water.color[1];
+    f[22] = config.world.water.color[2];
+    f[23] = config.world.water.level;
+
+    f[24] = config.world.water.extinction[0];
+    f[25] = config.world.water.extinction[1];
+    f[26] = config.world.water.extinction[2];
+    f[27] = config.world.water.ior;
+
+    f[28] = config.world.water.fresnelPower;
+    f[29] = config.world.water.roughness;
+    f[30] = config.world.water.reflectionStrength;
+    f[31] = config.world.water.refractionStrength;
+
+    f[32] = config.world.water.waveAmplitude;
+    f[33] = config.world.water.waveFrequency;
+    f[34] = config.world.water.waveSpeed;
+    f[35] = config.world.water.waveChoppiness;
+
+    f[36] = config.world.water.normalStrength;
+    f[37] = config.world.water.clarity;
+    f[38] = 0.0;
+    f[39] = 0.0;
 
     // House lights (inactive entries are zero intensity).
     for (let i = 0; i < MAX_HOUSE_LIGHTS; i++) {

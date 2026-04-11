@@ -58,7 +58,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let maxHeightAboveGround = max(ari.maxJumpHeight, FIREFLY_RADIUS + FIREFLY_GROUND_CLEARANCE + MIN_ALTITUDE_BAND);
 
   // Keep each home altitude valid over terrain changes before wandering from it.
-  let homeGroundY = getTerrainHeight(fly.homePosition.xz);
+  let homeGroundY = max(getTerrainHeight(fly.homePosition.xz), scene.waterLevel);
   let homeMinY = homeGroundY + FIREFLY_RADIUS + FIREFLY_GROUND_CLEARANCE;
   let homeMaxY = homeGroundY + maxHeightAboveGround;
   fly.homePosition.y = clamp(fly.homePosition.y, homeMinY, homeMaxY);
@@ -71,7 +71,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let wanderY = sin(time * BOB_FREQ + phaseOffset * 5.3) * BOB_AMPLITUDE;
 
   var targetPos = fly.homePosition + vec3f(wanderX, wanderY, wanderZ);
-  let targetGroundY = getTerrainHeight(targetPos.xz);
+  let targetGroundY = max(getTerrainHeight(targetPos.xz), scene.waterLevel);
   let targetMinY = targetGroundY + FIREFLY_RADIUS + FIREFLY_GROUND_CLEARANCE;
   let targetMaxY = targetGroundY + maxHeightAboveGround;
   targetPos.y = clamp(targetPos.y, targetMinY, targetMaxY);
@@ -83,7 +83,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   fly.position = fly.position + fly.velocity * dt;
 
   // Never allow the firefly sphere to clip below ground, and keep it in Ari's reachable air band.
-  let groundY = getTerrainHeight(fly.position.xz);
+  let groundY = max(getTerrainHeight(fly.position.xz), scene.waterLevel);
   let minY = groundY + FIREFLY_RADIUS + FIREFLY_GROUND_CLEARANCE;
   let maxY = groundY + maxHeightAboveGround;
   let clampedY = clamp(fly.position.y, minY, maxY);
