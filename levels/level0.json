@@ -38,18 +38,58 @@
         1.1
       ]
     },
-    "houseLight": {
-      "position": [
-        -8,
-        3,
-        8
-      ],
-      "color": [
-        1,
-        0.7,
-        0.3
-      ]
-    }
+    "moonShadowK": 5.5,
+    "moonShadowMaxDistance": 40,
+    "houseLights": [
+      {
+        "position": [
+          -8,
+          3,
+          8
+        ],
+        "color": [
+          1,
+          0.72,
+          0.34
+        ],
+        "intensity": 1.2,
+        "attenuation": 0.02,
+        "shadowK": 3.5,
+        "shadowMaxDistance": 45
+      },
+      {
+        "position": [
+          -3,
+          2.2,
+          9
+        ],
+        "color": [
+          1,
+          0.58,
+          0.22
+        ],
+        "intensity": 0.85,
+        "attenuation": 0.026,
+        "shadowK": 3.1,
+        "shadowMaxDistance": 32
+      },
+      {
+        "position": [
+          -11,
+          2.6,
+          5
+        ],
+        "color": [
+          0.95,
+          0.78,
+          0.44
+        ],
+        "intensity": 0.7,
+        "attenuation": 0.03,
+        "shadowK": 2.9,
+        "shadowMaxDistance": 30
+      }
+    ]
   },
   "scene": {
     "fogDensity": 0.02,
@@ -58,7 +98,10 @@
       0.01,
       0.02
     ],
-    "terrainFadeWidth": 0.1
+    "terrainFadeWidth": 0.1,
+    "ambientStrength": 0.15,
+    "fogSkyScale": 1.2,
+    "pointLightDiffuseScale": 0.5
   },
   "camera": {
     "initialDistance": 10,

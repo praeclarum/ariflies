@@ -369,19 +369,23 @@ function drawOverlays(ctx) {
     ctx.restore();
   }
 
-  // House light position
-  {
-    const pos = cfg.lights.houseLight.position;
+  // House light positions
+  for (let i = 0; i < cfg.lights.houseLights.length; i++) {
+    const light = cfg.lights.houseLights[i];
+    const pos = light.position;
     const [px, py] = worldToPixel(pos[0], pos[2], wr);
+    const intensity = Math.max(0.0, light.intensity);
+    const alpha = Math.min(0.95, 0.35 + intensity * 0.3);
+
     ctx.save();
-    ctx.fillStyle = 'rgba(255, 180, 80, 0.9)';
+    ctx.fillStyle = `rgba(255, 180, 80, ${alpha})`;
     ctx.beginPath();
     ctx.arc(px, py, 4, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = 'rgba(255, 180, 80, 0.6)';
+    ctx.fillStyle = 'rgba(255, 180, 80, 0.75)';
     ctx.font = '8px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('💡', px, py - 6);
+    ctx.fillText(`${i + 1}`, px, py - 7);
     ctx.restore();
   }
 

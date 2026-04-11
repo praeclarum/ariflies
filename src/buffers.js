@@ -11,6 +11,9 @@ export const FIREFLY_COUNT = 50;
 /** Maximum number of fireflies the buffer can hold */
 export const MAX_FIREFLIES = 200;
 
+/** Maximum number of house lights supported in SceneParams */
+export const MAX_HOUSE_LIGHTS = 10;
+
 // ── Struct byte sizes (must match WGSL struct layouts) ──────────────────────
 
 /** InputUniforms: keys(u32) + mouseButtons(u32) + mouseDelta(vec2f) + dt(f32) + time(f32) + resolution(vec2f) + renderScale(f32) + _pad(f32) */
@@ -29,8 +32,12 @@ export const FIREFLY_ARRAY_SIZE = FIREFLY_STRIDE * MAX_FIREFLIES;
 /** GameState: score(u32) + catchThisFrame(u32) + gamePhase(u32) + timeRemaining(f32) */
 export const GAME_STATE_SIZE = 16;
 
-/** SceneParams: moonDir(vec3f) + _pad + moonColor(vec3f) + _pad + houseLightPos(vec3f) + _pad + houseLightColor(vec3f) + fogDensity(f32) + ambientColor(vec3f) + _pad + worldRadius(f32) + maxHeight(f32) + terrainFadeWidth(f32) + _pad */
-export const SCENE_PARAMS_SIZE = 96;
+/** SceneParams header float count (5 vec4 entries) */
+export const SCENE_HEADER_FLOATS = 20;
+/** Per-house-light float count (3 vec4 entries) */
+export const HOUSE_LIGHT_STRIDE_FLOATS = 12;
+/** SceneParams byte size: header + fixed-cap house lights */
+export const SCENE_PARAMS_SIZE = (SCENE_HEADER_FLOATS + MAX_HOUSE_LIGHTS * HOUSE_LIGHT_STRIDE_FLOATS) * 4;
 
 // ── Key bitmask constants (shared with WGSL) ───────────────────────────────
 
@@ -243,7 +250,7 @@ export function createBuffers(device) {
     device.queue.writeBuffer(game, 0, data);
   }
 
-  // SceneParams: moonlight + house light + fog
+  // SceneParams: moonlight + world/scene tuning + fixed-cap house light array
   {
     const data = new ArrayBuffer(SCENE_PARAMS_SIZE);
     const f = new Float32Array(data);
@@ -253,14 +260,28 @@ export function createBuffers(device) {
     f[0] = mx / ml; f[1] = my / ml; f[2] = mz / ml; f[3] = 0.0;
     // moonColor (bright for contrast against dark)
     f[4] = 0.8; f[5] = 0.9; f[6] = 1.1; f[7] = 0.0;
-    // houseLightPos
-    f[8] = -8.0; f[9] = 3.0; f[10] = 8.0; f[11] = 0.0;
-    // houseLightColor (warm amber) + fogDensity (low for clarity)
-    f[12] = 1.0; f[13] = 0.7; f[14] = 0.3; f[15] = 0.02;
-    // ambientColor (very minimal - let moonlight do the work)
-    f[16] = 0.008; f[17] = 0.01; f[18] = 0.02; f[19] = 0.0;
-    // worldRadius, maxHeight, terrainFadeWidth (defaults, overwritten by level load)
-    f[20] = 15.0; f[21] = 5.0; f[22] = 0.1; f[23] = 0.0;
+    // ambientColor + fogDensity
+    f[8] = 0.008; f[9] = 0.01; f[10] = 0.02; f[11] = 0.02;
+    // worldRadius, maxHeight, terrainFadeWidth, ambientStrength
+    f[12] = 15.0; f[13] = 5.0; f[14] = 0.1; f[15] = 0.15;
+    // fogSkyScale, pointLightDiffuseScale, moonShadowK, moonShadowMaxDistance
+    f[16] = 1.2; f[17] = 0.5; f[18] = 5.5; f[19] = 40.0;
+
+    // Initialize all house lights to inactive.
+    for (let i = 0; i < MAX_HOUSE_LIGHTS; i++) {
+      const base = SCENE_HEADER_FLOATS + i * HOUSE_LIGHT_STRIDE_FLOATS;
+      f[base + 0] = 0.0; f[base + 1] = -100.0; f[base + 2] = 0.0; f[base + 3] = 0.0;
+      f[base + 4] = 0.0; f[base + 5] = 0.0; f[base + 6] = 0.0; f[base + 7] = 0.02;
+      f[base + 8] = 3.5; f[base + 9] = 45.0; f[base + 10] = 0.0; f[base + 11] = 0.0;
+    }
+
+    // Default active house light
+    {
+      const base = SCENE_HEADER_FLOATS;
+      f[base + 0] = -8.0; f[base + 1] = 3.0; f[base + 2] = 8.0; f[base + 3] = 1.0;
+      f[base + 4] = 1.0; f[base + 5] = 0.7; f[base + 6] = 0.3; f[base + 7] = 0.02;
+      f[base + 8] = 3.5; f[base + 9] = 45.0; f[base + 10] = 0.0; f[base + 11] = 0.0;
+    }
     device.queue.writeBuffer(scene, 0, data);
   }
 
@@ -309,8 +330,8 @@ export async function readbackGameState(buffers) {
  * @typedef {Object} LevelBufferConfig
  * @property {{ radius: number, maxHeight: number }} world
  * @property {{ startPosition: [number, number, number] }} ari
- * @property {{ moon: { direction: [number, number, number], color: [number, number, number] }, houseLight: { position: [number, number, number], color: [number, number, number] } }} lights
- * @property {{ fogDensity: number, ambientColor: [number, number, number], terrainFadeWidth: number }} scene
+ * @property {{ moon: { direction: [number, number, number], color: [number, number, number] }, moonShadowK: number, moonShadowMaxDistance: number, houseLights: Array<{ position: [number, number, number], color: [number, number, number], intensity: number, attenuation: number, shadowK: number, shadowMaxDistance: number }> }} lights
+ * @property {{ fogDensity: number, ambientColor: [number, number, number], terrainFadeWidth: number, ambientStrength: number, fogSkyScale: number, pointLightDiffuseScale: number }} scene
  * @property {{ initialDistance: number, initialPitch: number }} camera
  * @property {{ duration: number }} game
  */
@@ -398,18 +419,46 @@ export function resetBuffersFromLevel(device, buffers, config, fireflyHomes, ter
     f[0] = md[0] / ml; f[1] = md[1] / ml; f[2] = md[2] / ml; f[3] = 0.0;
     const mc = config.lights.moon.color;
     f[4] = mc[0]; f[5] = mc[1]; f[6] = mc[2]; f[7] = 0.0;
-    const hp = config.lights.houseLight.position;
-    f[8] = hp[0]; f[9] = hp[1]; f[10] = hp[2]; f[11] = 0.0;
-    const hc = config.lights.houseLight.color;
-    f[12] = hc[0]; f[13] = hc[1]; f[14] = hc[2];
-    f[15] = config.scene.fogDensity;
+
     const ac = config.scene.ambientColor;
-    f[16] = ac[0]; f[17] = ac[1]; f[18] = ac[2]; f[19] = 0.0;
-    // World params
-    f[20] = config.world.radius;
-    f[21] = config.world.maxHeight;
-    f[22] = config.scene.terrainFadeWidth;
-    f[23] = 0.0;
+    f[8] = ac[0]; f[9] = ac[1]; f[10] = ac[2]; f[11] = config.scene.fogDensity;
+
+    // World params + ambient strength
+    f[12] = config.world.radius;
+    f[13] = config.world.maxHeight;
+    f[14] = config.scene.terrainFadeWidth;
+    f[15] = config.scene.ambientStrength;
+
+    // Composer controls
+    f[16] = config.scene.fogSkyScale;
+    f[17] = config.scene.pointLightDiffuseScale;
+    f[18] = config.lights.moonShadowK;
+    f[19] = config.lights.moonShadowMaxDistance;
+
+    // House lights (inactive entries are zero intensity).
+    for (let i = 0; i < MAX_HOUSE_LIGHTS; i++) {
+      const base = SCENE_HEADER_FLOATS + i * HOUSE_LIGHT_STRIDE_FLOATS;
+      const light = config.lights.houseLights[i];
+      if (light) {
+        f[base + 0] = light.position[0];
+        f[base + 1] = light.position[1];
+        f[base + 2] = light.position[2];
+        f[base + 3] = light.intensity;
+        f[base + 4] = light.color[0];
+        f[base + 5] = light.color[1];
+        f[base + 6] = light.color[2];
+        f[base + 7] = light.attenuation;
+        f[base + 8] = light.shadowK;
+        f[base + 9] = light.shadowMaxDistance;
+        f[base + 10] = 0.0;
+        f[base + 11] = 0.0;
+      } else {
+        f[base + 0] = 0.0; f[base + 1] = -100.0; f[base + 2] = 0.0; f[base + 3] = 0.0;
+        f[base + 4] = 0.0; f[base + 5] = 0.0; f[base + 6] = 0.0; f[base + 7] = 0.02;
+        f[base + 8] = 3.5; f[base + 9] = 45.0; f[base + 10] = 0.0; f[base + 11] = 0.0;
+      }
+    }
+
     device.queue.writeBuffer(buffers.scene, 0, data);
   }
 

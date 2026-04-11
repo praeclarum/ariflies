@@ -67,21 +67,19 @@ struct GameState {
   timeRemaining: f32,
 };
 
+struct HouseLightData {
+  positionIntensity: vec4f,
+  colorAttenuation: vec4f,
+  shadowParams: vec4f,
+};
+
 struct SceneParams {
-  moonDir: vec3f,
-  _pad0: f32,
-  moonColor: vec3f,
-  _pad1: f32,
-  houseLightPos: vec3f,
-  _pad2: f32,
-  houseLightColor: vec3f,
-  fogDensity: f32,
-  ambientColor: vec3f,
-  _pad3: f32,
-  worldRadius: f32,
-  maxHeight: f32,
-  terrainFadeWidth: f32,
-  _pad5: f32,
+  moonDir: vec4f,
+  moonColor: vec4f,
+  ambientColorFogDensity: vec4f,
+  worldParams: vec4f,         // worldRadius, maxHeight, terrainFadeWidth, ambientStrength
+  lightComposerParams: vec4f, // fogSkyScale, pointLightDiffuseScale, moonShadowK, moonShadowMaxDistance
+  houseLights: array<HouseLightData, 10>,
 };
 
 // ── Bindings ─────────────────────────────────────────────────────────────
@@ -208,7 +206,8 @@ fn sdAri(p: vec3f) -> f32 {
 // ── Terrain height ───────────────────────────────────────────────────────
 
 fn worldToTerrainUV(worldXZ: vec2f) -> vec2f {
-  return (worldXZ + vec2f(scene.worldRadius)) / (2.0 * scene.worldRadius);
+  let worldRadius = scene.worldParams.x;
+  return (worldXZ + vec2f(worldRadius)) / (2.0 * worldRadius);
 }
 
 // Fade factor: 1.0 inside terrain, fades to 0 outside world radius
@@ -217,7 +216,8 @@ fn terrainFade(worldXZ: vec2f) -> f32 {
   // Distance from UV center (0.5, 0.5) in UV space
   let fromCenter = abs(uv - vec2f(0.5)) * 2.0; // 0..1 inside, >1 outside
   let edgeDist = max(fromCenter.x, fromCenter.y);
-  return 1.0 - smoothstep(1.0 - scene.terrainFadeWidth, 1.0, edgeDist);
+  let fadeWidth = clamp(scene.worldParams.z, 0.001, 1.0);
+  return 1.0 - smoothstep(1.0 - fadeWidth, 1.0, edgeDist);
 }
 
 fn getTerrainHeight(worldXZ: vec2f) -> f32 {
@@ -226,7 +226,7 @@ fn getTerrainHeight(worldXZ: vec2f) -> f32 {
   // Must use explicit LOD — this is called inside ray march and shadow loops
   // which are non-uniform control flow (textureSample derivatives are undefined).
   let h = textureSampleLevel(terrainTexture, terrainSampler, clampedUV, 0.0).r;
-  return h * scene.maxHeight * terrainFade(worldXZ);
+  return h * scene.worldParams.y * terrainFade(worldXZ);
 }
 
 // ── Scene SDF ────────────────────────────────────────────────────────────
@@ -476,7 +476,7 @@ fn skyColor(rd: vec3f) -> vec3f {
   sky += purpleTint;
   
   // Subtle horizon glow on opposite side of moon
-  let moonDir = normalize(scene.moonDir);
+  let moonDir = normalize(scene.moonDir.xyz);
   let antiMoon = -vec3f(moonDir.x, 0.0, moonDir.z);
   let horizonGlow = max(dot(normalize(vec3f(rd.x, 0.0, rd.z)), antiMoon), 0.0);
   let horizonBand = exp(-abs(rd.y) * 10.0);
@@ -500,15 +500,15 @@ fn skyColor(rd: vec3f) -> vec3f {
   
   // Tight inner glow
   let moonGlow = pow(max(moonDot, 0.0), 256.0) * 0.6;
-  sky += scene.moonColor * moonGlow;
+  sky += scene.moonColor.xyz * moonGlow;
 
   // Medium halo
   let halo1 = pow(max(moonDot, 0.0), 32.0) * 0.15;
-  sky += scene.moonColor * halo1;
+  sky += scene.moonColor.xyz * halo1;
   
   // Broad atmospheric halo
   let halo2 = pow(max(moonDot, 0.0), 8.0) * 0.06;
-  sky += scene.moonColor * halo2 * vec3f(0.8, 0.85, 1.0);
+  sky += scene.moonColor.xyz * halo2 * vec3f(0.8, 0.85, 1.0);
 
   return sky;
 }
@@ -516,19 +516,21 @@ fn skyColor(rd: vec3f) -> vec3f {
 // ── Fog with moon rays ───────────────────────────────────────────────────
 
 fn applyFog(color: vec3f, dist: f32, rd: vec3f) -> vec3f {
-  let fogAmount = 1.0 - exp(-dist * scene.fogDensity);
+  let fogDensity = scene.ambientColorFogDensity.w;
+  let fogAmount = 1.0 - exp(-dist * fogDensity);
   
   // Base fog color from sky
-  var fogColor = skyColor(rd) * 1.2 + scene.ambientColor;
+  let fogSkyScale = scene.lightComposerParams.x;
+  var fogColor = skyColor(rd) * fogSkyScale + scene.ambientColorFogDensity.xyz;
   
   // Moon influence on fog - brighter when looking toward moon (god rays effect)
-  let moonDir = normalize(scene.moonDir);
+  let moonDir = normalize(scene.moonDir.xyz);
   let moonInfluence = max(dot(rd, moonDir), 0.0);
   
   // Add moon-tinted brightness to fog when looking toward moon
   // Subtle effect without noisy banding
   let godRayStrength = pow(moonInfluence, 3.0) * 0.25;
-  fogColor += scene.moonColor * godRayStrength;
+  fogColor += scene.moonColor.xyz * godRayStrength;
   
   // Height-based fog density (thicker near ground)
   let heightFog = exp(-max(rd.y, 0.0) * 2.0);
@@ -590,42 +592,58 @@ fn shade(p: vec3f, normal: vec3f, materialId: u32) -> vec3f {
     color = vec3f(0.0, 0.0, 0.0);
   }
 
-  let moonDir = normalize(scene.moonDir);
+  let moonDir = normalize(scene.moonDir.xyz);
   
   // Calculate moon shadow (soft shadows from moonlight)
   // Use slope-scaled bias to reduce view-dependent self-shadow artifacts.
   let moonNdotL = max(dot(normal, moonDir), 0.0);
   let moonBias = SHADOW_BIAS_BASE + (1.0 - moonNdotL) * SHADOW_BIAS_GRAZE_SCALE;
   let moonShadowOrigin = p + normal * moonBias + moonDir * SHADOW_LIGHT_PUSH;
-  let moonShadow = calcSoftShadow(moonShadowOrigin, moonDir, 0.02, 40.0, 5.5);
+  let moonShadowK = scene.lightComposerParams.z;
+  let moonShadowMaxDistance = scene.lightComposerParams.w;
+  let moonShadow = calcSoftShadow(moonShadowOrigin, moonDir, 0.02, moonShadowMaxDistance, moonShadowK);
   
   // Moonlight diffuse with shadows - high contrast
   let moonDiffuse = max(dot(normal, moonDir), 0.0);
   let shadowedMoon = moonDiffuse * (0.08 + 0.92 * moonShadow);  // Deep shadows
-  color += color * scene.moonColor * shadowedMoon * 2.0;
+  color += color * scene.moonColor.xyz * shadowedMoon * 2.0;
 
-  // Minimal ambient - let shadows be dark
-  color += scene.ambientColor * 0.15;
+  // Minimal ambient - let shadows stay dark while still preserving readability.
+  let ambientStrength = scene.worldParams.w;
+  color += scene.ambientColorFogDensity.xyz * ambientStrength;
 
-  // House light (point light) with shadows
-  let toLight = scene.houseLightPos - p;
-  let lightDist = length(toLight);
-  let lightDir = toLight / lightDist;
-  let lightAtten = 1.0 / (1.0 + lightDist * lightDist * 0.02);
-  let lightDiffuse = max(dot(normal, lightDir), 0.0);
-  
-  // House light shadow (softer k value for warmer light)
-  let houseNdotL = max(dot(normal, lightDir), 0.0);
-  let houseBias = SHADOW_BIAS_BASE + (1.0 - houseNdotL) * SHADOW_BIAS_GRAZE_SCALE;
-  let houseShadowOrigin = p + normal * houseBias + lightDir * SHADOW_LIGHT_PUSH;
-  let houseShadow = calcSoftShadow(houseShadowOrigin, lightDir, 0.02, lightDist, 3.5);
-  color += scene.houseLightColor * lightDiffuse * lightAtten * houseShadow * 0.5;
+  // House lights (point lights), each with its own attenuation and shadow softness.
+  let pointLightDiffuseScale = scene.lightComposerParams.y;
+  for (var i = 0; i < 10; i++) {
+    let light = scene.houseLights[i];
+    let lightIntensity = light.positionIntensity.w;
+    if (lightIntensity <= 0.0001) { continue; }
+
+    let toLight = light.positionIntensity.xyz - p;
+    let lightDist = length(toLight);
+    if (lightDist <= 0.001) { continue; }
+
+    let lightDir = toLight / lightDist;
+    let attenuation = max(light.colorAttenuation.w, 0.0001);
+    let lightAtten = lightIntensity / (1.0 + lightDist * lightDist * attenuation);
+    let lightDiffuse = max(dot(normal, lightDir), 0.0);
+    if (lightDiffuse <= 0.0001) { continue; }
+
+    let houseNdotL = max(dot(normal, lightDir), 0.0);
+    let houseBias = SHADOW_BIAS_BASE + (1.0 - houseNdotL) * SHADOW_BIAS_GRAZE_SCALE;
+    let houseShadowOrigin = p + normal * houseBias + lightDir * SHADOW_LIGHT_PUSH;
+    let shadowK = max(light.shadowParams.x, 0.1);
+    let shadowMaxDistance = min(lightDist, max(light.shadowParams.y, 0.05));
+    let houseShadow = calcSoftShadow(houseShadowOrigin, lightDir, 0.02, shadowMaxDistance, shadowK);
+
+    color += light.colorAttenuation.xyz * lightDiffuse * lightAtten * houseShadow * pointLightDiffuseScale;
+  }
 
   // Rim light for Ari (helps silhouette) - no shadow needed
   if (materialId == 1u) {
     let viewDir = normalize(camera.eye - p);
     let rim = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.0);
-    color += scene.moonColor * rim * 0.35;
+    color += scene.moonColor.xyz * rim * 0.35;
   }
 
   return color;

@@ -12,11 +12,10 @@ The expected delivery window is about **two weeks**, with implementation done **
 
 Build a **dreamy, beautiful, playable nighttime scene** that immediately impresses judges through:
 
-* realtime ray marching / ray tracing
-* atmospheric moonlit rendering
+* realtime ray marching
+* atmospheric moonlit/sunlight rendering
 * a cute stylized cat character
-* glowing moving fireflies
-* a small but roamable backyard
+* glowing moving fireflies, bees, and birds
 * simple, responsive interaction
 
 This is **not** a deep game. It is a polished visual demo with a light score-attack game wrapper.
@@ -194,21 +193,21 @@ The yard should have at least a few materially distinct zones:
 
 ### Rendering Style
 
-Dreamy, beautiful, nighttime, soft, atmospheric.
+Dreamy, beautiful, soft, atmospheric.
 
 Not horror. Not photorealism-at-all-costs. Not arcade bright.
 
 Visual priorities:
 
-* moon visible in sky
-* cool moonlight as the dominant directional source
+* moon/sun visible in sky
+* cool moonlight or warm sunlight as the dominant directional source
 * warm accent light from house / deck area
 * fog / atmospheric participation along the ray
 * emissive fireflies
 * silhouettes and depth
 * attractive screenshots from normal gameplay
 
-### Ray Marching / Ray Tracing Expectations
+### Ray Marching Expectations
 
 The renderer should visibly justify the chosen technique.
 
@@ -236,22 +235,22 @@ Avoid:
 * ambitious multi-scattering cloud systems
 * expensive volumetric simulation that jeopardizes delivery
 
-### Moon
+### Moon/Sun
 
-The moon should be **visible**, not only implied as an offscreen light.
+The moon/sun should be **visible**, not only implied as an offscreen light.
 
 Requirements:
 
 * visible in the sky during normal play
 * contributes strongly to composition
-* can have glow / halo if cheap enough
+* has glow / halo
 
 ### Lighting
 
 Required minimum:
 
-* one directional moonlight
-* one warm local light source near the house/deck
+* one directional moonlight/sunlight
+* up to 10 level lights for house/deck accents
 * emissive fireflies
 
 Stretch:
@@ -525,7 +524,7 @@ Use these rules when uncertain:
 
 ### Milestone 5: World Beauty ❌
 
-- [ ] terrain texture height variation
+- [x] terrain texture height variation
 - [ ] terrain texture data material variation
 - [ ] deck, fence, bushes, house wall integrated
 - [x] firefly congregation zones (partial: they have home positions but no variety by zone)
@@ -598,6 +597,7 @@ src/
     ari_compute.wgsl
     firefly_compute.wgsl
     raymarch.wgsl
+    terrain_preprocess.wgsl
 .github/
   workflows/
     deploy.yml      ← GitHub Pages deployment

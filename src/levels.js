@@ -18,6 +18,9 @@ export const TERRAIN_SIZE = 256;
 /** Maximum number of fireflies supported (buffer pre-allocated to this) */
 export const MAX_FIREFLIES = 200;
 
+/** Maximum number of editable house lights supported per level */
+export const MAX_HOUSE_LIGHTS = 10;
+
 // ── Level JSON schema types ─────────────────────────────────────────────────
 
 /**
@@ -30,14 +33,24 @@ export const MAX_FIREFLIES = 200;
  */
 
 /**
+ * @typedef {Object} HouseLightConfig
+ * @property {[number, number, number]} position
+ * @property {[number, number, number]} color
+ * @property {number} intensity
+ * @property {number} attenuation
+ * @property {number} shadowK
+ * @property {number} shadowMaxDistance
+ */
+
+/**
  * @typedef {Object} LevelConfig
  * @property {string} name
  * @property {number} version
  * @property {{ radius: number, maxHeight: number }} world
  * @property {{ startPosition: [number, number, number] }} ari
  * @property {FireflyZone[]} fireflyZones
- * @property {{ moon: { direction: [number, number, number], color: [number, number, number] }, houseLight: { position: [number, number, number], color: [number, number, number] } }} lights
- * @property {{ fogDensity: number, ambientColor: [number, number, number], terrainFadeWidth: number }} scene
+ * @property {{ moon: { direction: [number, number, number], color: [number, number, number] }, moonShadowK: number, moonShadowMaxDistance: number, houseLights: HouseLightConfig[] }} lights
+ * @property {{ fogDensity: number, ambientColor: [number, number, number], terrainFadeWidth: number, ambientStrength: number, fogSkyScale: number, pointLightDiffuseScale: number }} scene
  * @property {{ initialDistance: number, initialPitch: number }} camera
  * @property {{ duration: number }} game
  */
@@ -72,9 +85,27 @@ export function defaultLevelConfig() {
     ],
     lights: {
       moon: { direction: [0.4, 0.35, 0.6], color: [0.8, 0.9, 1.1] },
-      houseLight: { position: [-8, 3, 8], color: [1.0, 0.7, 0.3] },
+      moonShadowK: 5.5,
+      moonShadowMaxDistance: 40.0,
+      houseLights: [
+        {
+          position: [-8, 3, 8],
+          color: [1.0, 0.7, 0.3],
+          intensity: 1.0,
+          attenuation: 0.02,
+          shadowK: 3.5,
+          shadowMaxDistance: 45.0,
+        },
+      ],
     },
-    scene: { fogDensity: 0.02, ambientColor: [0.008, 0.01, 0.02], terrainFadeWidth: 0.1 },
+    scene: {
+      fogDensity: 0.02,
+      ambientColor: [0.008, 0.01, 0.02],
+      terrainFadeWidth: 0.1,
+      ambientStrength: 0.15,
+      fogSkyScale: 1.2,
+      pointLightDiffuseScale: 0.5,
+    },
     camera: { initialDistance: 10.0, initialPitch: 0.6 },
     game: { duration: 120 },
   };
@@ -169,6 +200,17 @@ async function loadTerrainImage(levelId) {
  */
 export function parseLevelConfig(json) {
   const defaults = defaultLevelConfig();
+  const fallbackLight = defaults.lights.houseLights[0];
+  const rawHouseLights = Array.isArray(json.lights?.houseLights)
+    ? /** @type {any[]} */ (json.lights.houseLights)
+    : null;
+
+  /** @type {HouseLightConfig[]} */
+  const parsedHouseLights = rawHouseLights
+    ? rawHouseLights
+      .slice(0, MAX_HOUSE_LIGHTS)
+      .map((light, index) => parseHouseLight(light, defaults.lights.houseLights[index] ?? fallbackLight))
+    : defaults.lights.houseLights.map((light) => ({ ...light }));
 
   return {
     name: typeof json.name === 'string' ? json.name : defaults.name,
@@ -187,18 +229,27 @@ export function parseLevelConfig(json) {
       : defaults.fireflyZones,
     lights: {
       moon: {
-        direction: json.lights?.moon?.direction ?? defaults.lights.moon.direction,
-        color: json.lights?.moon?.color ?? defaults.lights.moon.color,
+        direction: parseVec3(json.lights?.moon?.direction, defaults.lights.moon.direction),
+        color: parseColor(json.lights?.moon?.color, defaults.lights.moon.color),
       },
-      houseLight: {
-        position: json.lights?.houseLight?.position ?? defaults.lights.houseLight.position,
-        color: json.lights?.houseLight?.color ?? defaults.lights.houseLight.color,
-      },
+      moonShadowK: parseNumber(json.lights?.moonShadowK, defaults.lights.moonShadowK, 0.1, 16.0),
+      moonShadowMaxDistance: parseNumber(json.lights?.moonShadowMaxDistance, defaults.lights.moonShadowMaxDistance, 1.0, 200.0),
+      houseLights: parsedHouseLights.length > 0
+        ? parsedHouseLights
+        : defaults.lights.houseLights.map((light) => ({ ...light })),
     },
     scene: {
-      fogDensity: json.scene?.fogDensity ?? defaults.scene.fogDensity,
-      ambientColor: json.scene?.ambientColor ?? defaults.scene.ambientColor,
-      terrainFadeWidth: json.scene?.terrainFadeWidth ?? defaults.scene.terrainFadeWidth,
+      fogDensity: parseNumber(json.scene?.fogDensity, defaults.scene.fogDensity, 0.0, 2.0),
+      ambientColor: parseColor(json.scene?.ambientColor, defaults.scene.ambientColor),
+      terrainFadeWidth: parseNumber(json.scene?.terrainFadeWidth, defaults.scene.terrainFadeWidth, 0.001, 1.0),
+      ambientStrength: parseNumber(json.scene?.ambientStrength, defaults.scene.ambientStrength, 0.0, 2.0),
+      fogSkyScale: parseNumber(json.scene?.fogSkyScale, defaults.scene.fogSkyScale, 0.0, 4.0),
+      pointLightDiffuseScale: parseNumber(
+        json.scene?.pointLightDiffuseScale,
+        defaults.scene.pointLightDiffuseScale,
+        0.0,
+        4.0,
+      ),
     },
     camera: {
       initialDistance: json.camera?.initialDistance ?? defaults.camera.initialDistance,
@@ -207,6 +258,65 @@ export function parseLevelConfig(json) {
     game: {
       duration: json.game?.duration ?? defaults.game.duration,
     },
+  };
+}
+
+/**
+ * @param {unknown} value
+ * @param {[number, number, number]} fallback
+ * @returns {[number, number, number]}
+ */
+function parseVec3(value, fallback) {
+  if (!Array.isArray(value) || value.length !== 3) {
+    return [fallback[0], fallback[1], fallback[2]];
+  }
+  const x = Number(value[0]);
+  const y = Number(value[1]);
+  const z = Number(value[2]);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+    return [fallback[0], fallback[1], fallback[2]];
+  }
+  return [x, y, z];
+}
+
+/**
+ * @param {unknown} value
+ * @param {[number, number, number]} fallback
+ * @returns {[number, number, number]}
+ */
+function parseColor(value, fallback) {
+  const v = parseVec3(value, fallback);
+  return [Math.max(0.0, v[0]), Math.max(0.0, v[1]), Math.max(0.0, v[2])];
+}
+
+/**
+ * @param {unknown} value
+ * @param {number} fallback
+ * @param {number} min
+ * @param {number} max
+ * @returns {number}
+ */
+function parseNumber(value, fallback, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, n));
+}
+
+/**
+ * @param {any} light
+ * @param {HouseLightConfig} fallback
+ * @returns {HouseLightConfig}
+ */
+function parseHouseLight(light, fallback) {
+  return {
+    position: parseVec3(light?.position, fallback.position),
+    color: parseColor(light?.color, fallback.color),
+    intensity: parseNumber(light?.intensity, fallback.intensity, 0.0, 32.0),
+    attenuation: parseNumber(light?.attenuation, fallback.attenuation, 0.0001, 4.0),
+    shadowK: parseNumber(light?.shadowK, fallback.shadowK, 0.1, 16.0),
+    shadowMaxDistance: parseNumber(light?.shadowMaxDistance, fallback.shadowMaxDistance, 1.0, 200.0),
   };
 }
 

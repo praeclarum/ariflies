@@ -42,21 +42,19 @@ struct AriState {
   _pad3: f32,
 };
 
+struct HouseLightData {
+  positionIntensity: vec4f,
+  colorAttenuation: vec4f,
+  shadowParams: vec4f,
+};
+
 struct SceneParams {
-  moonDir: vec3f,
-  _pad0: f32,
-  moonColor: vec3f,
-  _pad1: f32,
-  houseLightPos: vec3f,
-  _pad2: f32,
-  houseLightColor: vec3f,
-  fogDensity: f32,
-  ambientColor: vec3f,
-  _pad3: f32,
-  worldRadius: f32,
-  maxHeight: f32,
-  _pad4: f32,
-  _pad5: f32,
+  moonDir: vec4f,
+  moonColor: vec4f,
+  ambientColorFogDensity: vec4f,
+  worldParams: vec4f,         // worldRadius, maxHeight, terrainFadeWidth, ambientStrength
+  lightComposerParams: vec4f, // fogSkyScale, pointLightDiffuseScale, moonShadowK, moonShadowMaxDistance
+  houseLights: array<HouseLightData, 10>,
 };
 
 @group(0) @binding(0) var<uniform> input: InputUniforms;
@@ -87,21 +85,23 @@ const FORWARD_LERP: f32 = 15.0;
 
 // Terrain height lookup using textureSampleLevel (available in compute)
 fn worldToTerrainUV(worldXZ: vec2f) -> vec2f {
-  return (worldXZ + vec2f(scene.worldRadius)) / (2.0 * scene.worldRadius);
+  let worldRadius = scene.worldParams.x;
+  return (worldXZ + vec2f(worldRadius)) / (2.0 * worldRadius);
 }
 
 fn terrainFade(worldXZ: vec2f) -> f32 {
   let uv = worldToTerrainUV(worldXZ);
   let fromCenter = abs(uv - vec2f(0.5)) * 2.0;
   let edgeDist = max(fromCenter.x, fromCenter.y);
-  return 1.0 - smoothstep(0.9, 1.0, edgeDist);
+  let fadeWidth = clamp(scene.worldParams.z, 0.001, 1.0);
+  return 1.0 - smoothstep(1.0 - fadeWidth, 1.0, edgeDist);
 }
 
 fn getTerrainHeight(worldXZ: vec2f) -> f32 {
   let uv = worldToTerrainUV(worldXZ);
   let clampedUV = clamp(uv, vec2f(0.001), vec2f(0.999));
   let h = textureSampleLevel(terrainTexture, terrainSampler, clampedUV, 0.0).r;
-  return h * scene.maxHeight * terrainFade(worldXZ);
+  return h * scene.worldParams.y * terrainFade(worldXZ);
 }
 
 @compute @workgroup_size(1)
@@ -177,9 +177,10 @@ fn main() {
 
   // Clamp to world bounds (soft circle)
   let distXZ = length(pos.xz);
-  if (distXZ > scene.worldRadius) {
-    pos.x = pos.x * (scene.worldRadius / distXZ);
-    pos.z = pos.z * (scene.worldRadius / distXZ);
+  let worldRadius = scene.worldParams.x;
+  if (distXZ > worldRadius) {
+    pos.x = pos.x * (worldRadius / distXZ);
+    pos.z = pos.z * (worldRadius / distXZ);
   }
 
   // Update forward direction toward actual movement direction (velocity), not input
