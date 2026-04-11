@@ -229,18 +229,6 @@ fn getTerrainHeight(worldXZ: vec2f) -> f32 {
   return h * scene.maxHeight * terrainFade(worldXZ);
 }
 
-// Terrain gradient for proper SDF distance estimation and analytic normals
-fn getTerrainGradient(worldXZ: vec2f) -> vec2f {
-  let texSize = f32(textureDimensions(terrainTexture, 0).x);
-  let texelSize = scene.worldRadius * 2.0 / texSize; // world-space texel
-  let e = texelSize;
-  let hL = getTerrainHeight(worldXZ - vec2f(e, 0.0));
-  let hR = getTerrainHeight(worldXZ + vec2f(e, 0.0));
-  let hD = getTerrainHeight(worldXZ - vec2f(0.0, e));
-  let hU = getTerrainHeight(worldXZ + vec2f(0.0, e));
-  return vec2f(hR - hL, hU - hD) / (2.0 * e);
-}
-
 // ── Scene SDF ────────────────────────────────────────────────────────────
 
 const FIREFLY_COUNT: u32 = 50u;
@@ -282,8 +270,7 @@ fn sceneSDF_cheap(p: vec3f) -> f32 {
   let clampedUV = clamp(uv, vec2f(0.001), vec2f(0.999));
   let slopeFactor = textureSampleLevel(slopeTexture, slopeSampler, clampedUV, 0.0).r;
   let ground = (p.y - terrainH) * slopeFactor;
-  // DEBUG: exclude Ari from shadow SDF to test if she causes the splotches
-  return ground;
+  return min(ground, sdAri(p));
 }
 
 fn sceneNormal(p: vec3f) -> vec3f {
