@@ -37,6 +37,16 @@ canvas {
   display: none;
   text-align: center;
 }
+#fps {
+  position: absolute;
+  left: 24px;
+  bottom: 16px;
+  pointer-events: none;
+  font-family: 'Courier New', monospace;
+  color: #ffe8a0;
+  font-size: 18px;
+  text-shadow: 0 0 8px rgba(0,0,0,0.8);
+}
 </style>
 </head>
 <body>
@@ -47,6 +57,7 @@ canvas {
   <span id="timer">2:00</span>
 </div>
 <div id="message"></div>
+<div id="fps">FPS: --</div>
 <script type="module">
 import { createEngine, loadLevel, attachGameSession, startFrameLoop } from './src/engine.js';
 import { loadLevel as loadLevelData, defaultLevel } from './src/levels.js';

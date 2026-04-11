@@ -38,6 +38,9 @@ import { spawnFirefliesFromZones } from './levels.js';
  * @property {number} lastTime
  * @property {number} totalTime
  * @property {number} frameCount
+ * @property {HTMLElement|null} fpsEl
+ * @property {number} fpsFrameCounter
+ * @property {number} fpsElapsed
  * @property {number} renderScale
  * @property {(() => void)|null} _resizeHandler
  */
@@ -103,6 +106,9 @@ export async function createEngine(canvas) {
     lastTime: 0,
     totalTime: 0,
     frameCount: 0,
+    fpsEl: document.getElementById('fps'),
+    fpsFrameCounter: 0,
+    fpsElapsed: 0,
     renderScale: 1.0,
     _resizeHandler: null,
   };
@@ -157,6 +163,11 @@ export function loadLevel(engine, levelData) {
   engine.lastTime = 0;
   engine.totalTime = 0;
   engine.frameCount = 0;
+  engine.fpsFrameCounter = 0;
+  engine.fpsElapsed = 0;
+  if (engine.fpsEl) {
+    engine.fpsEl.textContent = 'FPS: --';
+  }
 }
 
 /**
@@ -218,12 +229,26 @@ export function stopFrameLoop(engine) {
  */
 export function runOneFrame(engine) {
   const now = performance.now();
+  const rawFrameTime = engine.lastTime === 0
+    ? 1.0 / 60.0
+    : Math.max(0.0, (now - engine.lastTime) / 1000);
   const dt = engine.lastTime === 0
     ? 0.016
     : Math.max(0.001, Math.min((now - engine.lastTime) / 1000, 0.05));
   engine.lastTime = now;
   engine.totalTime += dt;
   engine.frameCount++;
+  engine.fpsFrameCounter++;
+  engine.fpsElapsed += rawFrameTime;
+
+  if (engine.fpsElapsed >= 1.0) {
+    const fps = Math.round(engine.fpsFrameCounter / engine.fpsElapsed);
+    if (engine.fpsEl) {
+      engine.fpsEl.textContent = `FPS: ${fps}`;
+    }
+    engine.fpsElapsed = 0;
+    engine.fpsFrameCounter = 0;
+  }
 
   const { device, context, buffers, computePipelines, renderer, inputState, gameSession, canvas } = engine;
 
