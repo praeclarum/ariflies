@@ -13,12 +13,14 @@ import {
   loadLevel, terrainToBlob,
   worldToPixel, pixelToWorld,
 } from './levels.js';
+import { createEngine, loadLevel as loadEngineLevel, startFrameLoop, stopFrameLoop } from './engine.js';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
 /**
  * @typedef {import('./levels.js').LevelConfig} LevelConfig
  * @typedef {import('./levels.js').LevelData} LevelData
+ * @typedef {import('./engine.js').Engine} Engine
  */
 
 /**
@@ -36,6 +38,8 @@ import {
  * @property {boolean} isPainting           — mouse held down on terrain
  * @property {string} levelId               — current level name (for saving)
  * @property {boolean} jsonDirty            — JSON textarea was edited but not yet parsed
+ * @property {Engine|null} engine           — WebGPU engine for live preview (null until init)
+ * @property {number} previewDebounceTimer  — debounce timer for preview updates
  */
 
 // ── Color palette for terrain visualization ─────────────────────────────────
@@ -96,6 +100,7 @@ async function initEditorAsync() {
   }
   renderTerrain();
   updateStatusLevel();
+  // Preview will be initialized separately by initPreview(state)
 }
 
 initEditorAsync();
@@ -117,6 +122,8 @@ function initEditor() {
     isPainting: false,
     levelId: 'level0',
     jsonDirty: false,
+    engine: null,
+    previewDebounceTimer: 0,
   };
 
   // Init JSON editor with default config text
@@ -177,6 +184,7 @@ function setupToolbar(s) {
   clearBtn.addEventListener('click', () => {
     s.terrainData = defaultTerrainImageData();
     renderTerrain();
+    schedulePreviewUpdate(s);
     setStatus('Terrain cleared');
   });
 }
@@ -213,6 +221,7 @@ function setupTerrainCanvas(s) {
     const [px, py] = canvasToPixel(e);
     paintBrush(s, px, py);
     renderTerrain();
+    schedulePreviewUpdate(s);
   });
 
   canvas.addEventListener('mousemove', (e) => {
@@ -229,6 +238,7 @@ function setupTerrainCanvas(s) {
     if (s.isPainting) {
       paintBrush(s, px, py);
       renderTerrain();
+      schedulePreviewUpdate(s);
     }
   });
 
@@ -441,6 +451,7 @@ function tryParseJson(s, editor, errorEl, statusEl) {
     statusEl.style.color = '#4ecca3';
     renderTerrain(); // Re-draw overlays
     updateStatusLevel();
+    schedulePreviewUpdate(s);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     errorEl.textContent = `Parse error: ${msg}`;
@@ -508,6 +519,7 @@ async function loadTerrainFromFile(s, file) {
     ctx.drawImage(bitmap, 0, 0, TERRAIN_SIZE, TERRAIN_SIZE);
     s.terrainData = ctx.getImageData(0, 0, TERRAIN_SIZE, TERRAIN_SIZE);
     renderTerrain();
+    schedulePreviewUpdate(s);
     setStatus(`Loaded terrain from ${file.name}`);
     // Update level ID from filename
     const match = file.name.match(/^(.+)\.png$/i);
@@ -532,6 +544,7 @@ async function loadJsonFromFile(s, file) {
     s.config = parseLevelConfig(json);
     setJsonText(JSON.stringify(s.config, null, 2));
     renderTerrain();
+    schedulePreviewUpdate(s);
     setStatus(`Loaded JSON from ${file.name}`);
     // Update level ID from filename
     const match = file.name.match(/^(.+)\.json$/i);
@@ -586,37 +599,68 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
-// ── Preview (Phase 2 placeholder) ───────────────────────────────────────────
+// ── Preview (WebGPU live preview) ───────────────────────────────────────────
 
-// The preview panel will be wired up in Phase 2 when we extract the engine.
-// For now, render a simple 2D overhead visualization on the preview canvas.
-
-function renderPreview() {
+/**
+ * Initialize the WebGPU engine for the preview canvas.
+ * @param {EditorState} s
+ */
+async function initPreview(s) {
   const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('preview-canvas'));
-  const container = document.getElementById('preview-container');
-  if (!canvas || !container) return;
+  if (!canvas) return;
 
-  // Size canvas to container
-  const rect = container.getBoundingClientRect();
-  canvas.width = Math.floor(rect.width);
-  canvas.height = Math.floor(rect.height);
+  const engine = await createEngine(canvas);
+  if (!engine) {
+    // WebGPU unavailable — show fallback text
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#0a0a1a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#666';
+      ctx.font = '14px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('WebGPU not available', canvas.width / 2, canvas.height / 2);
+    }
+    return;
+  }
 
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
+  s.engine = engine;
 
-  ctx.fillStyle = '#0a0a1a';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // Load current editor state as level data
+  const levelData = editorToLevelData(s);
+  loadEngineLevel(engine, levelData);
 
-  ctx.fillStyle = '#333';
-  ctx.font = '16px monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('WebGPU Preview — Phase 2', canvas.width / 2, canvas.height / 2);
+  startFrameLoop(engine);
 }
 
-// Initial preview render
-requestAnimationFrame(renderPreview);
-window.addEventListener('resize', renderPreview);
+/**
+ * Build a LevelData object from the current editor state.
+ * @param {EditorState} s
+ * @returns {LevelData}
+ */
+function editorToLevelData(s) {
+  return {
+    config: s.config,
+    terrainImageData: s.terrainData,
+  };
+}
+
+/**
+ * Schedule a debounced preview update after terrain or JSON changes.
+ * @param {EditorState} s
+ */
+function schedulePreviewUpdate(s) {
+  clearTimeout(s.previewDebounceTimer);
+  s.previewDebounceTimer = window.setTimeout(() => {
+    if (s.engine) {
+      loadEngineLevel(s.engine, editorToLevelData(s));
+    }
+  }, 300);
+}
+
+// Preview init runs after the editor state is ready
+initPreview(state);
 
 // ── DOM Helpers ──────────────────────────────────────────────────────────────
 

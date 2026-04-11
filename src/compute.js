@@ -7,7 +7,7 @@
  *   3. Firefly (reads Input+Ari+Game → writes Fireflies+Game)
  */
 
-import { FIREFLY_COUNT } from './buffers.js';
+import { MAX_FIREFLIES } from './buffers.js';
 
 /**
  * @typedef {import('./buffers.js').Buffers} Buffers
@@ -168,7 +168,7 @@ export function dispatchCompute(encoder, pipelines) {
     const pass = encoder.beginComputePass({ label: 'firefly-compute-pass' });
     pass.setPipeline(pipelines.firefly);
     pass.setBindGroup(0, pipelines.fireflyBindGroup);
-    pass.dispatchWorkgroups(Math.ceil(FIREFLY_COUNT / 64));
+    pass.dispatchWorkgroups(Math.ceil(MAX_FIREFLIES / 64));
     pass.end();
   }
 }

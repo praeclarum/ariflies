@@ -5,8 +5,11 @@
  * All game state lives on the GPU. CPU only writes input and reads back score.
  */
 
-/** Number of fireflies in the simulation */
+/** Default number of fireflies in the simulation */
 export const FIREFLY_COUNT = 50;
+
+/** Maximum number of fireflies the buffer can hold */
+export const MAX_FIREFLIES = 200;
 
 // ── Struct byte sizes (must match WGSL struct layouts) ──────────────────────
 
@@ -21,7 +24,7 @@ export const ARI_STATE_SIZE = 64;
 
 /** Single firefly: position(vec3f) + phase(f32) + velocity(vec3f) + brightness(f32) + homePosition(vec3f) + alive(u32) = 48 bytes */
 export const FIREFLY_STRIDE = 48;
-export const FIREFLY_ARRAY_SIZE = FIREFLY_STRIDE * FIREFLY_COUNT;
+export const FIREFLY_ARRAY_SIZE = FIREFLY_STRIDE * MAX_FIREFLIES;
 
 /** GameState: score(u32) + catchThisFrame(u32) + gamePhase(u32) + timeRemaining(f32) */
 export const GAME_STATE_SIZE = 16;
@@ -144,35 +147,36 @@ export function createBuffers(device) {
     device.queue.writeBuffer(ari, 0, data);
   }
 
-  // Fireflies: random home positions scattered around yard
+  // Fireflies: initialize all slots (unused entries parked underground)
   {
     const data = new ArrayBuffer(FIREFLY_ARRAY_SIZE);
     const f = new Float32Array(data);
     const u = new Uint32Array(data);
     const yardRadius = 12.0;
-    for (let i = 0; i < FIREFLY_COUNT; i++) {
+    for (let i = 0; i < MAX_FIREFLIES; i++) {
       const base = (i * FIREFLY_STRIDE) / 4; // f32 offset
-      // random position in yard
-      const angle = Math.random() * Math.PI * 2;
-      const dist = Math.random() * yardRadius;
-      const px = Math.cos(angle) * dist;
-      const pz = Math.sin(angle) * dist;
-      const py = 0.5 + Math.random() * 2.0;
-      // position(vec3f) + phase
-      f[base + 0] = px;
-      f[base + 1] = py;
-      f[base + 2] = pz;
-      f[base + 3] = Math.random() * Math.PI * 2; // phase
-      // velocity(vec3f) + brightness
-      f[base + 4] = 0.0;
-      f[base + 5] = 0.0;
-      f[base + 6] = 0.0;
-      f[base + 7] = 0.5 + Math.random() * 0.5; // brightness
-      // homePosition(vec3f) + alive(u32)
-      f[base + 8] = px;
-      f[base + 9] = py;
-      f[base + 10] = pz;
-      u[base + 11] = 1; // alive
+      if (i < FIREFLY_COUNT) {
+        // Active firefly — random position in yard
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * yardRadius;
+        const px = Math.cos(angle) * dist;
+        const pz = Math.sin(angle) * dist;
+        const py = 0.5 + Math.random() * 2.0;
+        f[base + 0] = px;
+        f[base + 1] = py;
+        f[base + 2] = pz;
+        f[base + 3] = Math.random() * Math.PI * 2;
+        f[base + 7] = 0.5 + Math.random() * 0.5;
+        f[base + 8] = px;
+        f[base + 9] = py;
+        f[base + 10] = pz;
+        u[base + 11] = 1;
+      } else {
+        // Inactive firefly — parked underground, invisible
+        f[base + 0] = 0; f[base + 1] = -100; f[base + 2] = 0;
+        f[base + 8] = 0; f[base + 9] = -100; f[base + 10] = 0;
+        u[base + 11] = 0;
+      }
     }
     device.queue.writeBuffer(fireflies, 0, data);
   }
@@ -238,4 +242,115 @@ export async function readbackGameState(buffers) {
     gamePhase: data[2],
     timeRemaining: fdata[3],
   };
+}
+
+// ── Level data reset ────────────────────────────────────────────────────────
+
+/**
+ * @typedef {Object} FireflyHome
+ * @property {number} x
+ * @property {number} y
+ * @property {number} z
+ */
+
+/**
+ * @typedef {Object} LevelBufferConfig
+ * @property {{ startPosition: [number, number, number] }} ari
+ * @property {{ moon: { direction: [number, number, number], color: [number, number, number] }, houseLight: { position: [number, number, number], color: [number, number, number] } }} lights
+ * @property {{ fogDensity: number, ambientColor: [number, number, number] }} scene
+ * @property {{ initialDistance: number, initialPitch: number }} camera
+ * @property {{ duration: number }} game
+ */
+
+/**
+ * Reset all GPU buffer state from level data. Does not recreate buffers or pipelines.
+ * @param {GPUDevice} device
+ * @param {Buffers} buffers
+ * @param {LevelBufferConfig} config
+ * @param {FireflyHome[]} fireflyHomes
+ */
+export function resetBuffersFromLevel(device, buffers, config, fireflyHomes) {
+  // Camera: behind and above Ari start position
+  {
+    const sp = config.ari.startPosition;
+    const data = new ArrayBuffer(CAMERA_STATE_SIZE);
+    const f = new Float32Array(data);
+    f[0] = sp[0]; f[1] = sp[1] + 5.0; f[2] = sp[2] - 8.0; f[3] = 0.0;
+    f[4] = sp[0]; f[5] = sp[1]; f[6] = sp[2]; f[7] = 0.0;
+    f[8] = 0.0; // orbitYaw
+    f[9] = config.camera.initialPitch;
+    f[10] = config.camera.initialDistance;
+    f[11] = 1.0; // fov
+    device.queue.writeBuffer(buffers.camera, 0, data);
+  }
+
+  // Ari: at start position, facing +Z
+  {
+    const sp = config.ari.startPosition;
+    const data = new ArrayBuffer(ARI_STATE_SIZE);
+    const f = new Float32Array(data);
+    f[0] = sp[0]; f[1] = sp[1]; f[2] = sp[2]; f[3] = 0.0; // forwardX = 0
+    f[4] = 0.0; f[5] = 0.0; f[6] = 0.0; f[7] = 1.0; // forwardZ = 1
+    f[8] = 0.0; // groundY
+    new Uint32Array(data, 36, 1)[0] = POSE_IDLE;
+    device.queue.writeBuffer(buffers.ari, 0, data);
+  }
+
+  // Fireflies: from spawn zone homes
+  {
+    const data = new ArrayBuffer(FIREFLY_ARRAY_SIZE);
+    const f = new Float32Array(data);
+    const u = new Uint32Array(data);
+    const count = Math.min(fireflyHomes.length, MAX_FIREFLIES);
+    for (let i = 0; i < MAX_FIREFLIES; i++) {
+      const base = (i * FIREFLY_STRIDE) / 4;
+      if (i < count) {
+        const home = fireflyHomes[i];
+        f[base + 0] = home.x;
+        f[base + 1] = home.y;
+        f[base + 2] = home.z;
+        f[base + 3] = Math.random() * Math.PI * 2; // phase
+        f[base + 7] = 0.5 + Math.random() * 0.5; // brightness
+        f[base + 8] = home.x;
+        f[base + 9] = home.y;
+        f[base + 10] = home.z;
+        u[base + 11] = 1; // alive
+      } else {
+        f[base + 1] = -100; f[base + 9] = -100; // underground
+        u[base + 11] = 0;
+      }
+    }
+    device.queue.writeBuffer(buffers.fireflies, 0, data);
+  }
+
+  // GameState: reset score, start playing
+  {
+    const data = new ArrayBuffer(GAME_STATE_SIZE);
+    const u = new Uint32Array(data);
+    const f = new Float32Array(data);
+    u[0] = 0; // score
+    u[1] = 0; // catchThisFrame
+    u[2] = PHASE_PLAYING;
+    f[3] = config.game.duration;
+    device.queue.writeBuffer(buffers.game, 0, data);
+  }
+
+  // SceneParams: from level config
+  {
+    const data = new ArrayBuffer(SCENE_PARAMS_SIZE);
+    const f = new Float32Array(data);
+    const md = config.lights.moon.direction;
+    const ml = Math.sqrt(md[0] * md[0] + md[1] * md[1] + md[2] * md[2]);
+    f[0] = md[0] / ml; f[1] = md[1] / ml; f[2] = md[2] / ml; f[3] = 0.0;
+    const mc = config.lights.moon.color;
+    f[4] = mc[0]; f[5] = mc[1]; f[6] = mc[2]; f[7] = 0.0;
+    const hp = config.lights.houseLight.position;
+    f[8] = hp[0]; f[9] = hp[1]; f[10] = hp[2]; f[11] = 0.0;
+    const hc = config.lights.houseLight.color;
+    f[12] = hc[0]; f[13] = hc[1]; f[14] = hc[2];
+    f[15] = config.scene.fogDensity;
+    const ac = config.scene.ambientColor;
+    f[16] = ac[0]; f[17] = ac[1]; f[18] = ac[2]; f[19] = 0.0;
+    device.queue.writeBuffer(buffers.scene, 0, data);
+  }
 }

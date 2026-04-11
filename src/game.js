@@ -17,27 +17,29 @@ import { GAME_STATE_SIZE, PHASE_WAITING, PHASE_PLAYING, PHASE_ENDED, readbackGam
  * @property {number} timeRemaining
  * @property {number} score
  * @property {boolean} readbackPending
- * @property {HTMLElement} scoreEl
- * @property {HTMLElement} timerEl
- * @property {HTMLElement} messageEl
+ * @property {HTMLElement|null} scoreEl
+ * @property {HTMLElement|null} timerEl
+ * @property {HTMLElement|null} messageEl
  */
 
 /**
  * Create a game session manager.
  * @param {Buffers} buffers
+ * @param {{ duration?: number }} [options]
  * @returns {GameSession}
  */
-export function createGame(buffers) {
-  const scoreEl = /** @type {HTMLElement} */ (document.getElementById('score'));
-  const timerEl = /** @type {HTMLElement} */ (document.getElementById('timer'));
-  const messageEl = /** @type {HTMLElement} */ (document.getElementById('message'));
+export function createGame(buffers, options) {
+  const scoreEl = document.getElementById('score');
+  const timerEl = document.getElementById('timer');
+  const messageEl = document.getElementById('message');
+  const duration = options?.duration ?? 120.0;
 
   // Suppress unused variable warning — buffers stored implicitly via closure in future use
   void buffers;
 
   return {
     phase: PHASE_PLAYING,
-    timeRemaining: 120.0,
+    timeRemaining: duration,
     score: 0,
     readbackPending: false,
     scoreEl,
@@ -98,16 +100,22 @@ export function requestScoreReadback(buffers, session) {
  * @param {GameSession} session
  */
 export function updateUI(session) {
-  session.scoreEl.textContent = `Score: ${session.score}`;
+  if (session.scoreEl) {
+    session.scoreEl.textContent = `Score: ${session.score}`;
+  }
 
-  const mins = Math.floor(session.timeRemaining / 60);
-  const secs = Math.floor(session.timeRemaining % 60);
-  session.timerEl.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+  if (session.timerEl) {
+    const mins = Math.floor(session.timeRemaining / 60);
+    const secs = Math.floor(session.timeRemaining % 60);
+    session.timerEl.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+  }
 
-  if (session.phase === PHASE_ENDED) {
-    session.messageEl.style.display = 'block';
-    session.messageEl.textContent = `Time's up!\nFinal score: ${session.score}`;
-  } else {
-    session.messageEl.style.display = 'none';
+  if (session.messageEl) {
+    if (session.phase === PHASE_ENDED) {
+      session.messageEl.style.display = 'block';
+      session.messageEl.textContent = `Time's up!\nFinal score: ${session.score}`;
+    } else {
+      session.messageEl.style.display = 'none';
+    }
   }
 }

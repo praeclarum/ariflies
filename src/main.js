@@ -1,131 +1,49 @@
 // @ts-check
 
 /**
- * @fileoverview App entry point. WebGPU init, frame loop orchestration.
- * CPU responsibility: gather input, manage timer, update DOM. Everything else is GPU.
+ * @fileoverview App entry point. Creates engine, loads level, starts game.
  */
 
-import { createBuffers, copyGameStateToStaging } from './buffers.js';
-import { createInput, writeInputBuffer } from './input.js';
-import { createGame, writeGameState, requestScoreReadback, updateUI } from './game.js';
-import { createComputePipelines, dispatchCompute } from './compute.js';
-import { createRenderer, render } from './renderer.js';
+import { createEngine, loadLevel, attachGameSession, startFrameLoop } from './engine.js';
+import { loadLevel as loadLevelData, defaultLevel } from './levels.js';
 
 async function main() {
   const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('canvas'));
   const messageEl = /** @type {HTMLElement} */ (document.getElementById('message'));
 
-  // ── WebGPU init ─────────────────────────────────────────────────────────
+  // ── Load level ──────────────────────────────────────────────────────────
 
-  if (!navigator.gpu) {
+  const params = new URLSearchParams(window.location.search);
+  const levelId = params.get('level') || 'level0';
+
+  let levelData;
+  try {
+    levelData = await loadLevelData(levelId);
+  } catch (e) {
+    console.warn(`Failed to load level ${levelId}, using defaults:`, e);
+    levelData = defaultLevel();
+  }
+
+  // ── Create engine ───────────────────────────────────────────────────────
+
+  const engine = await createEngine(canvas);
+  if (!engine) {
     messageEl.style.display = 'block';
     messageEl.textContent = 'WebGPU is not supported in this browser.';
-    console.error('WebGPU not supported');
     return;
   }
 
-  const adapter = await navigator.gpu.requestAdapter();
-  if (!adapter) {
-    messageEl.style.display = 'block';
-    messageEl.textContent = 'Failed to get GPU adapter.';
-    console.error('No GPU adapter');
-    return;
-  }
+  // Load level data into GPU buffers
+  loadLevel(engine, levelData);
 
-  const device = await adapter.requestDevice();
-  const context = /** @type {GPUCanvasContext} */ (canvas.getContext('webgpu'));
-  if (!context) {
-    messageEl.style.display = 'block';
-    messageEl.textContent = 'Failed to get WebGPU context.';
-    console.error('No WebGPU context');
-    return;
-  }
+  // Attach game session (timer, score, UI)
+  attachGameSession(engine, { duration: levelData.config.game.duration });
 
-  const format = navigator.gpu.getPreferredCanvasFormat();
-  context.configure({ device, format, alphaMode: 'opaque' });
+  console.log(`Level "${levelData.config.name}" loaded (${levelId})`);
 
-  console.log('WebGPU initialized');
-  console.log(`  Adapter: ${adapter.info?.vendor ?? 'unknown'} / ${adapter.info?.architecture ?? 'unknown'}`);
-  console.log(`  Format: ${format}`);
+  // ── Start ───────────────────────────────────────────────────────────────
 
-  // Log GPU errors
-  device.addEventListener('uncapturederror', (event) => {
-    console.error('WebGPU error:', event.error);
-  });
-
-  // ── Resize handling ─────────────────────────────────────────────────────
-
-  function resize() {
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.floor(canvas.clientWidth * dpr);
-    canvas.height = Math.floor(canvas.clientHeight * dpr);
-  }
-  window.addEventListener('resize', resize);
-  resize();
-
-  // ── Create GPU buffers and game systems ─────────────────────────────────
-
-  const buffers = createBuffers(device);
-  const inputState = createInput(canvas);
-  const gameSession = createGame(buffers);
-
-  // Load shaders and create pipelines (async)
-  const [computePipelines, renderer] = await Promise.all([
-    createComputePipelines(device, buffers),
-    createRenderer(device, format, buffers),
-  ]);
-
-  console.log('Pipelines ready');
-
-  // ── Frame loop ──────────────────────────────────────────────────────────
-
-  const renderScale = 1.0;
-  let lastTime = performance.now();
-  let totalTime = 0;
-  let frameCount = 0;
-
-  function frame() {
-    const now = performance.now();
-    // Ensure dt is at least 1ms to avoid divide-by-zero and zero-update issues
-    const dt = Math.max(0.001, Math.min((now - lastTime) / 1000, 0.05));
-    lastTime = now;
-    totalTime += dt;
-    frameCount++;
-
-    // Log first frame to help debug
-    if (frameCount === 1) {
-      console.log('First frame:', { dt, totalTime, canvasSize: [canvas.width, canvas.height] });
-    }
-
-    // 1. CPU → GPU: write input uniforms
-    writeInputBuffer(device, buffers.input, inputState, dt, totalTime, canvas, renderScale);
-
-    // 2. CPU → GPU: write game time/phase
-    writeGameState(device, buffers, gameSession, dt);
-
-    // 3-6. GPU work: compute passes + render pass
-    const encoder = device.createCommandEncoder();
-    dispatchCompute(encoder, computePipelines);
-    render(encoder, context, renderer);
-
-    // 7. Copy GameState → staging for async readback (skip if staging buffer is mapped)
-    if (!gameSession.readbackPending) {
-      copyGameStateToStaging(encoder, buffers);
-    }
-
-    // 8. Submit
-    device.queue.submit([encoder.finish()]);
-
-    // 9. Async readback + DOM update (only if we copied fresh data)
-    if (!gameSession.readbackPending) {
-      requestScoreReadback(buffers, gameSession);
-    }
-    updateUI(gameSession);
-
-    requestAnimationFrame(frame);
-  }
-
-  requestAnimationFrame(frame);
+  startFrameLoop(engine);
 }
 
 main();
