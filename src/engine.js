@@ -41,6 +41,7 @@ import { spawnFirefliesFromZones } from './levels.js';
  * @property {HTMLElement|null} fpsEl
  * @property {number} fpsFrameCounter
  * @property {number} fpsElapsed
+ * @property {boolean} gpuFrameInFlight
  * @property {number} renderScale
  * @property {(() => void)|null} _resizeHandler
  */
@@ -109,6 +110,7 @@ export async function createEngine(canvas) {
     fpsEl: document.getElementById('fps'),
     fpsFrameCounter: 0,
     fpsElapsed: 0,
+    gpuFrameInFlight: false,
     renderScale: 1.0,
     _resizeHandler: null,
   };
@@ -165,6 +167,7 @@ export function loadLevel(engine, levelData) {
   engine.frameCount = 0;
   engine.fpsFrameCounter = 0;
   engine.fpsElapsed = 0;
+  engine.gpuFrameInFlight = false;
   if (engine.fpsEl) {
     engine.fpsEl.textContent = 'FPS: --';
   }
@@ -200,7 +203,9 @@ export function startFrameLoop(engine) {
 
   function frame() {
     if (!engine.running) return;
-    runOneFrame(engine);
+    if (!engine.gpuFrameInFlight) {
+      runOneFrame(engine);
+    }
     engine.animFrameId = requestAnimationFrame(frame);
   }
 
@@ -213,6 +218,7 @@ export function startFrameLoop(engine) {
  */
 export function stopFrameLoop(engine) {
   engine.running = false;
+  engine.gpuFrameInFlight = false;
   if (engine.animFrameId) {
     cancelAnimationFrame(engine.animFrameId);
     engine.animFrameId = 0;
@@ -282,7 +288,13 @@ export function runOneFrame(engine) {
   }
 
   // 8. Submit
+  engine.gpuFrameInFlight = true;
   device.queue.submit([encoder.finish()]);
+  void device.queue.onSubmittedWorkDone().then(() => {
+    engine.gpuFrameInFlight = false;
+  }).catch(() => {
+    engine.gpuFrameInFlight = false;
+  });
 
   // 9. Readback + UI update
   if (gameSession) {
