@@ -64,7 +64,8 @@ export const MAX_HOUSE_LIGHTS = 10;
  * @typedef {Object} LevelConfig
  * @property {string} name
  * @property {number} version
- * @property {{ radius: number, maxHeight: number, water: WaterConfig, fogDensity: number, ambientColor: [number, number, number], terrainFadeWidth: number, ambientStrength: number, fogSkyScale: number, pointLightDiffuseScale: number }} world
+ * @property {{ radius: number, maxHeight: number, fogDensity: number, ambientColor: [number, number, number], terrainFadeWidth: number, ambientStrength: number, fogSkyScale: number, pointLightDiffuseScale: number }} world
+ * @property {WaterConfig} water
  * @property {{ startPosition: [number, number, number] }} ari
  * @property {FireflyZone[]} fireflyZones
  * @property {{ moon: { direction: [number, number, number], color: [number, number, number] }, moonShadowK: number, moonShadowMaxDistance: number, houseLights: HouseLightConfig[] }} lights
@@ -104,22 +105,22 @@ export function defaultLevelConfig() {
       ambientStrength: 0.15,
       fogSkyScale: 1.2,
       pointLightDiffuseScale: 0.5,
-      water: {
-        level: 0.75,
-        color: [0.06, 0.2, 0.28],
-        extinction: [0.25, 0.11, 0.05],
-        ior: 1.333,
-        fresnelPower: 5.0,
-        roughness: 0.08,
-        reflectionStrength: 1.0,
-        refractionStrength: 0.9,
-        waveAmplitude: 0.06,
-        waveFrequency: 0.95,
-        waveSpeed: 0.45,
-        waveChoppiness: 0.75,
-        normalStrength: 0.8,
-        clarity: 0.78,
-      },
+    },
+    water: {
+      level: 0.75,
+      color: [0.06, 0.2, 0.28],
+      extinction: [0.25, 0.11, 0.05],
+      ior: 1.333,
+      fresnelPower: 5.0,
+      roughness: 0.08,
+      reflectionStrength: 1.0,
+      refractionStrength: 0.9,
+      waveAmplitude: 0.06,
+      waveFrequency: 0.95,
+      waveSpeed: 0.45,
+      waveChoppiness: 0.75,
+      normalStrength: 0.8,
+      clarity: 0.78,
     },
     ari: { startPosition: [0, 0, 0] },
     fireflyZones: [
@@ -236,6 +237,7 @@ export function parseLevelConfig(json) {
   const defaults = defaultLevelConfig();
   const worldSettings = json.world ?? {};
   const sceneSettings = json.scene ?? {};
+  const waterSettings = json.water ?? worldSettings.water;
   const fallbackLight = defaults.lights.houseLights[0];
   const rawHouseLights = Array.isArray(json.lights?.houseLights)
     ? /** @type {any[]} */ (json.lights.houseLights)
@@ -275,8 +277,8 @@ export function parseLevelConfig(json) {
         0.0,
         4.0,
       ),
-      water: parseWaterConfig(worldSettings.water, defaults.world.water),
     },
+    water: parseWaterConfig(waterSettings, defaults.water),
     ari: {
       startPosition: Array.isArray(json.ari?.startPosition) && json.ari.startPosition.length === 3
         ? json.ari.startPosition

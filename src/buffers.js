@@ -465,7 +465,8 @@ export async function readbackGameState(buffers) {
 
 /**
  * @typedef {Object} LevelBufferConfig
- * @property {{ radius: number, maxHeight: number, fogDensity: number, ambientColor: [number, number, number], terrainFadeWidth: number, ambientStrength: number, fogSkyScale: number, pointLightDiffuseScale: number, water: { level: number, color: [number, number, number], extinction: [number, number, number], ior: number, fresnelPower: number, roughness: number, reflectionStrength: number, refractionStrength: number, waveAmplitude: number, waveFrequency: number, waveSpeed: number, waveChoppiness: number, normalStrength: number, clarity: number } }} world
+ * @property {{ radius: number, maxHeight: number, fogDensity: number, ambientColor: [number, number, number], terrainFadeWidth: number, ambientStrength: number, fogSkyScale: number, pointLightDiffuseScale: number }} world
+ * @property {{ level: number, color: [number, number, number], extinction: [number, number, number], ior: number, fresnelPower: number, roughness: number, reflectionStrength: number, refractionStrength: number, waveAmplitude: number, waveFrequency: number, waveSpeed: number, waveChoppiness: number, normalStrength: number, clarity: number }} water
  * @property {{ startPosition: [number, number, number] }} ari
  * @property {{ moon: { direction: [number, number, number], color: [number, number, number] }, moonShadowK: number, moonShadowMaxDistance: number, houseLights: Array<{ position: [number, number, number], color: [number, number, number], intensity: number, attenuation: number, shadowK: number, shadowMaxDistance: number }> }} lights
  * @property {{ initialDistance: number, initialPitch: number }} camera
@@ -576,28 +577,28 @@ export function resetBuffersFromLevel(device, buffers, config, fireflyHomes, ter
     f[19] = config.lights.moonShadowMaxDistance;
 
     // Water controls
-    f[20] = config.world.water.color[0];
-    f[21] = config.world.water.color[1];
-    f[22] = config.world.water.color[2];
-    f[23] = config.world.water.level;
+    f[20] = config.water.color[0];
+    f[21] = config.water.color[1];
+    f[22] = config.water.color[2];
+    f[23] = config.water.level;
 
-    f[24] = config.world.water.extinction[0];
-    f[25] = config.world.water.extinction[1];
-    f[26] = config.world.water.extinction[2];
-    f[27] = config.world.water.ior;
+    f[24] = config.water.extinction[0];
+    f[25] = config.water.extinction[1];
+    f[26] = config.water.extinction[2];
+    f[27] = config.water.ior;
 
-    f[28] = config.world.water.fresnelPower;
-    f[29] = config.world.water.roughness;
-    f[30] = config.world.water.reflectionStrength;
-    f[31] = config.world.water.refractionStrength;
+    f[28] = config.water.fresnelPower;
+    f[29] = config.water.roughness;
+    f[30] = config.water.reflectionStrength;
+    f[31] = config.water.refractionStrength;
 
-    f[32] = config.world.water.waveAmplitude;
-    f[33] = config.world.water.waveFrequency;
-    f[34] = config.world.water.waveSpeed;
-    f[35] = config.world.water.waveChoppiness;
+    f[32] = config.water.waveAmplitude;
+    f[33] = config.water.waveFrequency;
+    f[34] = config.water.waveSpeed;
+    f[35] = config.water.waveChoppiness;
 
-    f[36] = config.world.water.normalStrength;
-    f[37] = config.world.water.clarity;
+    f[36] = config.water.normalStrength;
+    f[37] = config.water.clarity;
     f[38] = 0.0;
     f[39] = 0.0;
 

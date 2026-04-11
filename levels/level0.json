@@ -13,31 +13,31 @@
     "terrainFadeWidth": 0.1,
     "ambientStrength": 0.15,
     "fogSkyScale": 1.2,
-    "pointLightDiffuseScale": 0.5,
-    "water": {
-      "level": 0.5,
-      "color": [
-        0.06,
-        0.2,
-        0.28
-      ],
-      "extinction": [
-        0.25,
-        0.11,
-        0.05
-      ],
-      "ior": 1.333,
-      "fresnelPower": 5,
-      "roughness": 0.08,
-      "reflectionStrength": 1,
-      "refractionStrength": 0.9,
-      "waveAmplitude": 0.06,
-      "waveFrequency": 0.95,
-      "waveSpeed": 2.0,
-      "waveChoppiness": 0.75,
-      "normalStrength": 0.8,
-      "clarity": 0.78
-    }
+    "pointLightDiffuseScale": 0.5
+  },
+  "water": {
+    "level": 0.5,
+    "color": [
+      0.06,
+      0.2,
+      0.28
+    ],
+    "extinction": [
+      0.25,
+      0.11,
+      0.05
+    ],
+    "ior": 1.333,
+    "fresnelPower": 5,
+    "roughness": 0.08,
+    "reflectionStrength": 1,
+    "refractionStrength": 0.9,
+    "waveAmplitude": 0.06,
+    "waveFrequency": 0.95,
+    "waveSpeed": 2.0,
+    "waveChoppiness": 0.75,
+    "normalStrength": 0.8,
+    "clarity": 0.78
   },
   "ari": {
     "startPosition": [
