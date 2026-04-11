@@ -576,7 +576,7 @@ These decisions are final. Do not revisit or second-guess them.
 ### Project Structure
 
 ```
-index.html          ← entry point (canvas + UI overlay)
+index.html          ← entry point (canvas + UI overlay + inline init script)
 editor.html         ← level editor (terrain painting, JSON editing, live preview)
 jsconfig.json       ← type checking config
 package.json        ← dev scripts only (live-server, tsc)
@@ -584,10 +584,19 @@ levels/
   level0.json       ← default level metadata (entities, lights, spawn zones)
   level0.png        ← default level terrain (256×256 RGBA heightmap/material)
 src/
-  main.js           ← app entry, WebGPU init
-  editor.js         ← level editor logic
-  levels.js         ← level loading, terrain texture, spawn zone expansion
-  shaders/          ← .wgsl files loaded via fetch()
+  buffers.js        ← GPU buffer creation, struct sizes, staging readback
+  compute.js        ← 3 compute pipelines, shader loading, dispatch
+  editor.js         ← level editor: terrain canvas, JSON editor, file I/O
+  engine.js         ← reusable engine: WebGPU init, frame loop, level loading
+  game.js           ← session flow, timer, score readback, DOM updates
+  input.js          ← DOM event capture → input uniform buffer
+  levels.js         ← level data loading, terrain texture, firefly zone expansion
+  renderer.js       ← fullscreen ray march render pipeline
+  shaders/
+    camera_compute.wgsl
+    ari_compute.wgsl
+    firefly_compute.wgsl
+    raymarch.wgsl
 .github/
   workflows/
     deploy.yml      ← GitHub Pages deployment
@@ -710,24 +719,6 @@ Six GPU buffers hold all game state. See code for exact struct layouts.
 * `camera_compute.wgsl`, `ari_compute.wgsl`, `firefly_compute.wgsl`, `raymarch.wgsl`
 * Struct definitions are duplicated across files (WGSL has no `#include`)
 * If `raymarch.wgsl` outgrows itself, split via JS string concatenation — not a preprocessor
-
-### JS Module Structure
-
-```
-src/
-  buffers.js        ← GPU buffer creation, struct sizes, staging readback
-  compute.js        ← 3 compute pipelines, shader loading, dispatch
-  editor.js         ← level editor: terrain canvas, JSON editor, file I/O
-  game.js           ← session flow, timer, score readback, DOM updates
-  input.js          ← DOM event capture → input uniform buffer
-  levels.js         ← level data loading, terrain texture, firefly zone expansion
-  renderer.js       ← fullscreen ray march render pipeline
-  shaders/
-    camera_compute.wgsl
-    ari_compute.wgsl
-    firefly_compute.wgsl
-    raymarch.wgsl
-```
 
 ### Frame Pipeline Order
 
