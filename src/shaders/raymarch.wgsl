@@ -64,6 +64,66 @@ fn smin(a: f32, b: f32, k: f32) -> f32 {
   return mix(b, a, h) - k * h * (1.0 - h);
 }
 
+fn ariBodyBob() -> f32 {
+  return sin(ari.animPhase * 2.0) * 0.05;
+}
+
+fn worldToAriLocal(p: vec3f) -> vec3f {
+  let ap = p - ari.position;
+  let fwd = vec2f(ari.forwardX, ari.forwardZ);
+
+  // right = up × forward = (fz, 0, -fx)
+  return vec3f(
+    fwd.y * ap.x - fwd.x * ap.z,
+    ap.y,
+    fwd.x * ap.x + fwd.y * ap.z,
+  );
+}
+
+const ARI_EYE_Y: f32 = 0.95;
+const ARI_EYE_Z_MIN: f32 = 0.62;
+const ARI_EYE_Z_MAX: f32 = 0.88;
+const ARI_EYE_X_OFFSET: f32 = 0.145;
+const ARI_EYE_RADIUS_X: f32 = 0.092;
+const ARI_EYE_RADIUS_Y: f32 = 0.084;
+const ARI_PUPIL_RADIUS_X: f32 = 0.035;
+const ARI_PUPIL_RADIUS_Y: f32 = 0.053;
+
+fn ariEyeMask(lp: vec3f, bob: f32) -> f32 {
+  let faceMask = smoothstep(ARI_EYE_Z_MIN, ARI_EYE_Z_MIN + 0.07, lp.z) *
+    (1.0 - smoothstep(ARI_EYE_Z_MAX - 0.05, ARI_EYE_Z_MAX, lp.z));
+
+  let eyeY = ARI_EYE_Y + bob;
+  let leftEyeDist = length(vec2f(
+    (lp.x + ARI_EYE_X_OFFSET) / ARI_EYE_RADIUS_X,
+    (lp.y - eyeY) / ARI_EYE_RADIUS_Y,
+  ));
+  let rightEyeDist = length(vec2f(
+    (lp.x - ARI_EYE_X_OFFSET) / ARI_EYE_RADIUS_X,
+    (lp.y - eyeY) / ARI_EYE_RADIUS_Y,
+  ));
+
+  let leftEye = 1.0 - smoothstep(0.80, 1.05, leftEyeDist);
+  let rightEye = 1.0 - smoothstep(0.80, 1.05, rightEyeDist);
+  return max(leftEye, rightEye) * faceMask;
+}
+
+fn ariPupilMask(lp: vec3f, bob: f32) -> f32 {
+  let eyeY = ARI_EYE_Y + bob;
+  let leftPupilDist = length(vec2f(
+    (lp.x + ARI_EYE_X_OFFSET) / ARI_PUPIL_RADIUS_X,
+    (lp.y - eyeY) / ARI_PUPIL_RADIUS_Y,
+  ));
+  let rightPupilDist = length(vec2f(
+    (lp.x - ARI_EYE_X_OFFSET) / ARI_PUPIL_RADIUS_X,
+    (lp.y - eyeY) / ARI_PUPIL_RADIUS_Y,
+  ));
+
+  let leftPupil = 1.0 - smoothstep(0.65, 1.0, leftPupilDist);
+  let rightPupil = 1.0 - smoothstep(0.65, 1.0, rightPupilDist);
+  return max(leftPupil, rightPupil);
+}
+
 // ── Ari SDF ─────────────────────────────────────────────────────────────
 // Ari looks toward local +Z. We rotate world points into Ari's local frame.
 //
@@ -76,21 +136,10 @@ fn smin(a: f32, b: f32, k: f32) -> f32 {
 //   |  fx   0   fz |
 
 fn sdAri(p: vec3f) -> f32 {
-  let ap = p - ari.position;
-  
-  // Forward direction (Y=0, normalized)
-  let fwd = vec2f(ari.forwardX, ari.forwardZ);
-  
-  // Build rotation using cross product: right = up × forward
-  // right = (fz, -fx), up = (0,1,0), forward = (fx, fz)
-  let lp = vec3f(
-    fwd.y * ap.x - fwd.x * ap.z,   // dot(right, ap) where right = (fz, 0, -fx)
-    ap.y,
-    fwd.x * ap.x + fwd.y * ap.z,   // dot(forward, ap)
-  );
+  let lp = worldToAriLocal(p);
 
   // Body bob based on animation
-  let bob = sin(ari.animPhase * 2.0) * 0.05;
+  let bob = ariBodyBob();
 
   // Body: elongated sphere
   let bodyP = lp - vec3f(0.0, 0.5 + bob, 0.0);
@@ -583,6 +632,18 @@ fn shade(p: vec3f, normal: vec3f, materialId: u32) -> vec3f {
     let viewDir = normalize(camera.eye - p);
     let rim = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.0);
     color += scene.moonColor * rim * 0.35;
+
+    // Big yellow eyes for Ari, placed in local head space.
+    let lp = worldToAriLocal(p);
+    let bob = ariBodyBob();
+    let eyeMask = ariEyeMask(lp, bob);
+    let pupilMask = ariPupilMask(lp, bob) * eyeMask;
+    let irisColor = vec3f(1.0, 0.86, 0.18);
+    let pupilColor = vec3f(0.03, 0.025, 0.015);
+
+    color = mix(color, irisColor * 1.35, eyeMask);
+    color = mix(color, pupilColor, pupilMask);
+    color += irisColor * eyeMask * 0.55;
   }
 
   return color;
