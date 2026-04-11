@@ -20,8 +20,8 @@ struct InputUniforms {
   resolutionX: f32,
   resolutionY: f32,
   renderScale: f32,
-  _pad: f32,
-  _pad2: f32,
+  analogX: f32,
+  analogZ: f32,
   _pad3: f32,
 };
 

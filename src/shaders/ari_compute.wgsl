@@ -11,8 +11,8 @@ struct InputUniforms {
   resolutionX: f32,
   resolutionY: f32,
   renderScale: f32,
-  _pad: f32,
-  _pad2: f32,
+  analogX: f32,
+  analogZ: f32,
   _pad3: f32,
 };
 
@@ -80,6 +80,10 @@ fn main() {
   if ((keys & KEY_S) != 0u) { inputZ -= 1.0; }
   if ((keys & KEY_A) != 0u) { inputX -= 1.0; }
   if ((keys & KEY_D) != 0u) { inputX += 1.0; }
+
+  // Add analog touch input (virtual trackpad on mobile)
+  inputX += input.analogX;
+  inputZ += input.analogZ;
 
   // Get camera basis vectors from eye/lookAt
   // Forward: direction camera is looking (XZ plane, normalized)
