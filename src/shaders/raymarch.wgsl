@@ -245,13 +245,13 @@ struct HitInfo {
 };
 
 fn sceneSDF(p: vec3f) -> HitInfo {
-  // Terrain heightfield with Lipschitz-correct distance estimate
-  // For a heightfield h(x,z), the proper conservative bound is:
-  //   d = (p.y - h) / sqrt(1 + |grad(h)|^2)
+  // Terrain heightfield distance estimate.
+  // Use a fixed conservative factor rather than per-step gradient, which
+  // created non-smooth SDF causing view-dependent splotchy artifacts.
+  // For gentle terrain (max slope ~0.5), 1/sqrt(1+0.25) ≈ 0.89, so 0.7 is safe.
+  // Analytic terrainNormal() handles shading — no gradient needed here.
   let terrainH = getTerrainHeight(p.xz);
-  let grad = getTerrainGradient(p.xz);
-  let gradMag2 = dot(grad, grad);
-  let ground = (p.y - terrainH) / sqrt(1.0 + gradMag2);
+  let ground = (p.y - terrainH) * 0.7;
 
   // Ari
   let ariDist = sdAri(p);
@@ -271,7 +271,10 @@ fn sceneSDF(p: vec3f) -> HitInfo {
 // Cheaper SDF for shadow rays (skip gradient, use conservative factor)
 fn sceneSDF_cheap(p: vec3f) -> f32 {
   let terrainH = getTerrainHeight(p.xz);
-  let ground = (p.y - terrainH) * 0.4; // conservative for max slope
+  // Use raw height difference for terrain — the 0.4 conservative factor
+  // causes false occlusion near the surface. For shadow rays, we only care
+  // about whether the ray goes underground.
+  let ground = p.y - terrainH;
   let ariDist = sdAri(p);
   return min(ariDist, ground);
 }
