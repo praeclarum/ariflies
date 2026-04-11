@@ -409,58 +409,6 @@ If forced to choose between a better rendering effect and a deeper gameplay mech
 
 ---
 
-## Acceptance Criteria for a Good Submission
-
-The project is successful if:
-
-* it runs in the browser via WebGPU
-* it is clearly realtime
-* Ari is controllable
-* Ari can catch fireflies
-* the moonlit backyard looks beautiful and intentional
-* the ray-marched / ray-traced nature of the rendering is apparent
-* the scene has depth, atmosphere, and strong mood
-* the experience feels polished enough to show judges for a short demo
-
-The project does **not** need:
-
-* deep progression
-* polished enemy AI
-* complex narrative
-* sophisticated pathfinding
-* advanced physics
-* general-purpose engine abstractions beyond what the demo needs
-
----
-
-## Stretch Goals
-
-Only attempt these after the core loop and visual quality are solid.
-
-### Stretch Tier 1
-
-- [ ] fireflies scatter when Ari misses a pounce
-- [x] subtle moon halo / glow (basic halo implemented)
-- [ ] drifting cloud band near moon
-- [ ] improved soft shadows
-- [ ] puddle / dew specular accents
-- [ ] better deck traversal presentation
-- [ ] beauty-tuned post effects if cheap and tasteful
-
-### Stretch Tier 2
-
-- [ ] decorative extra cats (golden rival, black-and-white neutral)
-- [ ] decorative perches on fence or deck
-- [ ] additional material richness
-
-### Stretch Tier 3
-
-- [ ] more advanced flocking
-- [ ] richer environmental interactions
-- [ ] more complex scoring systems
-
----
-
 ## Explicit Anti-Goals
 
 Do **not** let the project drift into any of the following unless the core is already excellent:
@@ -490,70 +438,29 @@ Use these rules when uncertain:
 
 ---
 
-## Suggested Milestone Order
+## Future Improvements
 
-### Milestone 1: Skeleton ✅
+### Ari Appeal
 
-- [x] WebGPU app bootstrapped
-- [x] camera basic follow/orbit
-- [x] placeholder terrain (flat ground plane at y=0)
-- [x] placeholder Ari movement
-- [x] timer and score skeleton
+- [ ] improved cat silhouette
+- [ ] improved cat animations (crouch pose, landing squash, walk cycle)
+- [ ] fireflies scatter when Ari misses a pounce
+- [ ] NPC cats (golden rival, black-and-white neutral)
+- [ ] more advanced flocking for fireflies, bees, birds
+- [ ] richer environmental interactions
+- [ ] more complex scoring systems
 
-### Milestone 2: Playable Core 🔶
+### World Beauty
 
-- [x] Ari controllable with WASD
-- [x] Ari controllable with drag on mobile devices and tap to jump/pounce
-- [x] fireflies moving and catchable
-- [x] 2-minute score attack loop functional
-
-### Milestone 3: Renderer Identity ✅
-
-- [x] moon visible (with glow and halo)
-- [x] atmospheric fog added
-- [x] strong moonlight + warm house light
-- [x] basic attractive night palette
-
-### Milestone 4: Ari Appeal 🔶
-
-- [x] smooth blended cat model (SDF: body, head, ears, tail, legs)
-- [x] cute movement (body bob from animPhase)
-- [x] jump/pounce action
-- [x] tail sway animation
-- [ ] improved silhouette and animation parameters (crouch pose, landing squash, walk cycle)
-
-### Milestone 5: World Beauty ❌
-
-- [x] terrain texture height variation
 - [ ] terrain texture data material variation
 - [ ] deck, fence, bushes, house wall integrated
-- [x] firefly congregation zones (partial: they have home positions but no variety by zone)
-- [ ] composition improved for screenshots
-
-### Milestone 6: Polish 🔶
-
-- [ ] readability tuning
-- [x] camera smoothing / recenter tuning
-- [x] score/timer UI cleanup
-- [ ] bug fixes
-- [ ] performance tuning (configurable render scale exists but not tuned)
+- [ ] drifting cloud band near moon
+- [ ] puddle / dew specular accents
+- [ ] beauty-tuned post effects if cheap and tasteful
 
 ---
 
-## Final Instruction to Agents
-
-Treat this as a **judge-facing visual experience** first and a game second.
-
-When in doubt, ask:
-
-> Does this make the first 10 seconds more beautiful, memorable, and playable?
-
-If yes, it is likely worth doing.
-If no, it is probably scope creep.
-
----
-
-## Implementation Decisions (Resolved)
+## Implementation Decisions
 
 These decisions are final. Do not revisit or second-guess them.
 
@@ -744,12 +651,12 @@ Six GPU buffers hold all game state. See code for exact struct layouts.
 
 Levels are stored as file pairs in the `/levels/` directory:
 
-* `levels/{id}.png` — 256×256 RGBA terrain texture
+* `levels/{id}.png` — RGBA terrain texture
 * `levels/{id}.json` — level metadata (entities, lights, spawn zones, world config)
 
 The game loads a level at startup via `?level=level0` URL parameter (defaults to `level0`).
 
-#### Terrain Texture Encoding (256×256 RGBA PNG)
+#### Terrain Texture Encoding (RGBA PNG)
 
 | Channel | Encoding | Range |
 |---------|----------|-------|
@@ -760,29 +667,6 @@ The game loads a level at startup via `?level=level0` URL parameter (defaults to
 
 Coordinate mapping: pixel (0,0) = world `(-worldRadius, -worldRadius)`, pixel (255,255) = world `(+worldRadius, +worldRadius)`. Height uses bilinear interpolation; material uses nearest-neighbor to avoid blending between material types.
 
-#### Level JSON Schema
-
-```json
-{
-  "name": "Backyard",
-  "version": 1,
-  "world": { "radius": 15.0, "maxHeight": 5.0 },
-  "ari": { "startPosition": [0, 0, 0] },
-  "fireflyZones": [
-    { "center": [3, 1.5, 5], "radius": 3.0, "count": 15, "minHeight": 0.5, "maxHeight": 2.5 }
-  ],
-  "lights": {
-    "moon": { "direction": [0.4, 0.35, 0.6], "color": [0.8, 0.9, 1.1] },
-    "houseLight": { "position": [-8, 3, 8], "color": [1.0, 0.7, 0.3] }
-  },
-  "scene": { "fogDensity": 0.02, "ambientColor": [0.008, 0.01, 0.02] },
-  "camera": { "initialDistance": 10.0, "initialPitch": 0.6 },
-  "game": { "duration": 120 }
-}
-```
-
-Fireflies are defined as **spawn zones** (center, radius, count). At load time, `levels.js` expands zones into individual home positions scattered within each zone. The firefly buffer is pre-allocated for a max of 200 fireflies; the actual count is a uniform.
-
 #### Level Editor (`editor.html`)
 
 A dev-only interactive editor at `/editor.html` with three panels:
@@ -792,3 +676,14 @@ A dev-only interactive editor at `/editor.html` with three panels:
 3. **Preview** — WebGPU canvas showing the level as it would appear in-game, updating live on edits
 
 Level files are saved via download links (PNG + JSON). Loaded via file picker or `?level=` URL param.
+
+---
+
+## JavaScript Coding Standards
+
+* Use `const` and `let` appropriately (prefer `const` by default)
+
+## WGSL Coding Standards
+
+* Use constants with good names for all "magic numbers" (e.g. max fireflies, movement speeds, thresholds)
+* Use structs with good field names instead of packing values into vector elements
