@@ -294,10 +294,8 @@ fn terrainNormal(p: vec3f) -> vec3f {
 
 const MAX_STEPS: i32 = 120;
 const MAX_DIST: f32 = 120.0;
-const SURFACE_DIST: f32 = 0.003;
-const SURFACE_DIST_SCALE: f32 = 0.00008;
-const SURFACE_DIST_MAX: f32 = 0.012;
-const PRIMARY_MIN_STEP: f32 = 0.0025;
+const SURFACE_DIST: f32 = 0.002;
+const PRIMARY_MIN_STEP: f32 = 0.002;
 
 struct RayResult {
   dist: f32,
@@ -319,8 +317,7 @@ fn rayMarch(ro: vec3f, rd: vec3f) -> RayResult {
     let hit = sceneSDF(p);
     result.dist = hit.dist;
 
-    // Keep threshold growth modest to avoid camera-centered shell artifacts.
-    let surfaceThreshold = min(SURFACE_DIST + result.totalDist * SURFACE_DIST_SCALE, SURFACE_DIST_MAX);
+    let surfaceThreshold = SURFACE_DIST;
 
     if (hit.dist < surfaceThreshold) {
       // Refine hit position to improve world-space stability at grazing angles.
@@ -339,9 +336,36 @@ fn rayMarch(ro: vec3f, rd: vec3f) -> RayResult {
         }
         result.totalDist = 0.5 * (tNear + tFar);
       } else if (hit.dist > 0.0) {
-        // If we accepted by threshold before crossing the surface,
-        // pull back a bit to reduce depth-quantized shading rings.
-        result.totalDist = max(result.totalDist - hit.dist * 0.5, prevTotalDist);
+        // If accepted by threshold before crossing, march forward briefly to
+        // bracket an actual zero-crossing and refine there (prevents rings).
+        var tNear = prevTotalDist;
+        var dNear = prevDist;
+        var tFar = result.totalDist;
+        var dFar = hit.dist;
+
+        for (var j = 0; j < 5; j++) {
+          if (dFar <= 0.0 || tFar > MAX_DIST) { break; }
+          tNear = tFar;
+          dNear = dFar;
+          tFar += max(dFar, PRIMARY_MIN_STEP);
+          dFar = sceneSDF(ro + rd * tFar).dist;
+        }
+
+        if (dNear > 0.0 && dFar <= 0.0) {
+          for (var j = 0; j < 5; j++) {
+            let tMid = 0.5 * (tNear + tFar);
+            let dMid = sceneSDF(ro + rd * tMid).dist;
+            if (dMid > 0.0) {
+              tNear = tMid;
+            } else {
+              tFar = tMid;
+            }
+          }
+          result.totalDist = 0.5 * (tNear + tFar);
+        } else {
+          // Conservative fallback if we still fail to bracket a crossing.
+          result.totalDist = max(result.totalDist - hit.dist * 0.35, prevTotalDist);
+        }
       } else if (hit.dist < 0.0) {
         // Fallback clamp for slight overshoot when no sign change was bracketed.
         result.totalDist = max(result.totalDist + hit.dist, prevTotalDist);
@@ -663,8 +687,18 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
   let result = rayMarch(eye, rd);
 
   var color: vec3f;
+  var sceneDepth = MAX_DIST;
   if (result.hit) {
-    let hitPos = eye + rd * result.totalDist;
+    var hitPos = eye + rd * result.totalDist;
+    var hitDist = result.totalDist;
+
+    // Terrain hits should lie on the exact heightfield surface. This removes
+    // march-depth quantization that can show up as concentric shadow/fog rings.
+    if (result.materialId == 0u) {
+      hitPos = vec3f(hitPos.x, getTerrainHeight(hitPos.xz), hitPos.z);
+      hitDist = length(hitPos - eye);
+    }
+
     // Use analytic normal for terrain (smooth, no noise), SDF normal for Ari
     var normal: vec3f;
     if (result.materialId == 0u) {
@@ -673,14 +707,14 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
       normal = sceneNormal(hitPos);
     }
     color = shade(hitPos, normal, result.materialId);
-    color = applyFog(color, result.totalDist, rd);
+    color = applyFog(color, hitDist, rd);
+    sceneDepth = hitDist;
   } else {
     color = skyColor(rd);
   }
 
   // Add firefly glow on top
-  let maxDist = select(MAX_DIST, result.totalDist, result.hit);
-  color += fireflyGlow(eye, rd, maxDist);
+  color += fireflyGlow(eye, rd, sceneDepth);
 
   // Simple tonemap
   color = color / (1.0 + color);
