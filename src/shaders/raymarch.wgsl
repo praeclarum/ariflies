@@ -46,9 +46,9 @@ struct AriState {
   jumpT: f32,
   animPhase: f32,
   tailPhase: f32,
+  maxJumpHeight: f32,
   _pad1: f32,
   _pad2: f32,
-  _pad3: f32,
 };
 
 struct Firefly {
@@ -664,6 +664,9 @@ fn shade(p: vec3f, normal: vec3f, materialId: u32) -> vec3f {
 
 // ── Firefly glow ─────────────────────────────────────────────────────────
 
+const FIREFLY_RENDER_RADIUS: f32 = 0.2;
+const FIREFLY_HALO_RADIUS: f32 = 0.36;
+
 fn fireflyGlow(ro: vec3f, rd: vec3f, sceneDepth: f32) -> vec3f {
   var glow = vec3f(0.0);
 
@@ -679,9 +682,11 @@ fn fireflyGlow(ro: vec3f, rd: vec3f, sceneDepth: f32) -> vec3f {
     let closest = ro + rd * t;
     let dist = length(fly.position - closest);
 
-    // Glow falloff
-    let intensity = fly.brightness * exp(-dist * dist * 20.0);
-    let flyColor = vec3f(0.8, 0.95, 0.2) * intensity * 2.0;
+    // Core + halo model: core radius matches compute-side terrain clamp.
+    let core = 1.0 - smoothstep(FIREFLY_RENDER_RADIUS * 0.6, FIREFLY_RENDER_RADIUS, dist);
+    let halo = exp(-pow(dist / FIREFLY_HALO_RADIUS, 2.0) * 2.4);
+    let intensity = fly.brightness * (core * 1.1 + halo * 0.65);
+    let flyColor = vec3f(0.8, 0.95, 0.2) * intensity * 1.8;
 
     glow += flyColor;
   }

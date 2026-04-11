@@ -4,7 +4,7 @@
  * @fileoverview Creates and dispatches 3 compute pipelines in dependency order:
  *   1. Camera (reads Input+Ari → writes Camera)
  *   2. Ari (reads Input+Camera → writes Ari)
- *   3. Firefly (reads Input+Ari+Game → writes Fireflies+Game)
+ *   3. Firefly (reads Input+Ari+Game+Scene+Terrain → writes Fireflies+Game)
  */
 
 import { MAX_FIREFLIES } from './buffers.js';
@@ -117,6 +117,9 @@ export async function createComputePipelines(device, buffers) {
       { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
       { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
       { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+      { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+      { binding: 5, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'float' } },
+      { binding: 6, visibility: GPUShaderStage.COMPUTE, sampler: { type: 'filtering' } },
     ],
   });
   const fireflyPipeline = device.createComputePipeline({
@@ -132,6 +135,9 @@ export async function createComputePipelines(device, buffers) {
       { binding: 1, resource: { buffer: buffers.ari } },
       { binding: 2, resource: { buffer: buffers.fireflies } },
       { binding: 3, resource: { buffer: buffers.game } },
+      { binding: 4, resource: { buffer: buffers.scene } },
+      { binding: 5, resource: buffers.terrainTexture.createView() },
+      { binding: 6, resource: buffers.terrainSampler },
     ],
   });
 
@@ -217,6 +223,28 @@ export function rebuildAriBindGroup(device, pipelines, buffers) {
       { binding: 3, resource: { buffer: buffers.scene } },
       { binding: 4, resource: buffers.terrainTexture.createView() },
       { binding: 5, resource: buffers.terrainSampler },
+    ],
+  });
+}
+
+/**
+ * Rebuild the firefly compute bind group (needed after terrain texture recreation).
+ * @param {GPUDevice} device
+ * @param {ComputePipelines} pipelines
+ * @param {Buffers} buffers
+ */
+export function rebuildFireflyBindGroup(device, pipelines, buffers) {
+  pipelines.fireflyBindGroup = device.createBindGroup({
+    label: 'firefly-compute-bg',
+    layout: pipelines.firefly.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: buffers.input } },
+      { binding: 1, resource: { buffer: buffers.ari } },
+      { binding: 2, resource: { buffer: buffers.fireflies } },
+      { binding: 3, resource: { buffer: buffers.game } },
+      { binding: 4, resource: { buffer: buffers.scene } },
+      { binding: 5, resource: buffers.terrainTexture.createView() },
+      { binding: 6, resource: buffers.terrainSampler },
     ],
   });
 }

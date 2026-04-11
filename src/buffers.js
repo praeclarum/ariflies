@@ -22,8 +22,11 @@ export const INPUT_UNIFORMS_SIZE = 48;
 /** CameraState: eye(vec3f) + _pad + target(vec3f) + _pad + orbitYaw(f32) + orbitPitch(f32) + distance(f32) + fov(f32) */
 export const CAMERA_STATE_SIZE = 48;
 
-/** AriState: position(vec3f) + facing(f32) + velocity(vec3f) + speed(f32) + groundY(f32) + poseState(u32) + jumpT(f32) + animPhase(f32) + tailPhase(f32) + _pad(3×f32) */
+/** AriState: position(vec3f) + facing(f32) + velocity(vec3f) + speed(f32) + groundY(f32) + poseState(u32) + jumpT(f32) + animPhase(f32) + tailPhase(f32) + maxJumpHeight(f32) + _pad(2×f32) */
 export const ARI_STATE_SIZE = 64;
+
+/** Default max jump height in meters (from JUMP_VELOCITY^2 / (2 * GRAVITY)) */
+export const ARI_DEFAULT_MAX_JUMP_HEIGHT = 1.0;
 
 /** Single firefly: position(vec3f) + phase(f32) + velocity(vec3f) + brightness(f32) + homePosition(vec3f) + alive(u32) = 48 bytes */
 export const FIREFLY_STRIDE = 48;
@@ -199,8 +202,9 @@ export function createBuffers(device) {
     f[8] = 0.0;
     new Uint32Array(data, 36, 1)[0] = POSE_IDLE;
     f[10] = 0.0; f[11] = 0.0;
-    // tailPhase + padding
+    // tailPhase + maxJumpHeight + padding
     f[12] = 0.0;
+    f[13] = ARI_DEFAULT_MAX_JUMP_HEIGHT;
     device.queue.writeBuffer(ari, 0, data);
   }
 
@@ -368,6 +372,7 @@ export function resetBuffersFromLevel(device, buffers, config, fireflyHomes, ter
     f[4] = 0.0; f[5] = 0.0; f[6] = 0.0; f[7] = 1.0; // forwardZ = 1
     f[8] = 0.0; // groundY
     new Uint32Array(data, 36, 1)[0] = POSE_IDLE;
+    f[13] = ARI_DEFAULT_MAX_JUMP_HEIGHT;
     device.queue.writeBuffer(buffers.ari, 0, data);
   }
 

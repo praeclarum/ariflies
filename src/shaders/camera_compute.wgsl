@@ -26,9 +26,9 @@ struct AriState {
   jumpT: f32,
   animPhase: f32,
   tailPhase: f32,
+  maxJumpHeight: f32,
   _pad1: f32,
   _pad2: f32,
-  _pad3: f32,
 };
 
 struct CameraState {

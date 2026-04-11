@@ -37,9 +37,9 @@ struct AriState {
   jumpT: f32,
   animPhase: f32,
   tailPhase: f32,
+  maxJumpHeight: f32,
   _pad1: f32,
   _pad2: f32,
-  _pad3: f32,
 };
 
 struct HouseLightData {
@@ -95,6 +95,7 @@ const MOVE_SPEED: f32 = 5.0;
 const FRICTION: f32 = 8.0;
 const JUMP_VELOCITY: f32 = 6.0;
 const GRAVITY: f32 = 18.0;
+const MAX_JUMP_HEIGHT: f32 = (JUMP_VELOCITY * JUMP_VELOCITY) / (2.0 * GRAVITY);
 const FORWARD_LERP: f32 = 15.0;
 
 // Terrain height lookup using textureSampleLevel (available in compute)
@@ -238,4 +239,5 @@ fn main() {
   ari.jumpT = jumpT;
   ari.animPhase = animPhase;
   ari.tailPhase = tailPhase;
+  ari.maxJumpHeight = MAX_JUMP_HEIGHT;
 }

@@ -8,7 +8,7 @@
 import { createBuffers, copyGameStateToStaging, resetBuffersFromLevel, createTerrainTextures, GAME_STATE_SIZE, PHASE_PLAYING } from './buffers.js';
 import { createInput, writeInputBuffer } from './input.js';
 import { createGame, writeGameState, requestScoreReadback, updateUI } from './game.js';
-import { createComputePipelines, dispatchCompute, rebuildAriBindGroup, preprocessTerrain } from './compute.js';
+import { createComputePipelines, dispatchCompute, rebuildAriBindGroup, rebuildFireflyBindGroup, preprocessTerrain } from './compute.js';
 import { createRenderer, render, rebuildRenderBindGroup } from './renderer.js';
 import { spawnFirefliesFromZones } from './levels.js';
 
@@ -131,6 +131,7 @@ export function loadLevel(engine, levelData) {
 
     // Rebuild bind groups that reference terrain textures
     rebuildAriBindGroup(engine.device, engine.computePipelines, engine.buffers);
+    rebuildFireflyBindGroup(engine.device, engine.computePipelines, engine.buffers);
     rebuildRenderBindGroup(engine.device, engine.renderer, engine.buffers);
   }
 
