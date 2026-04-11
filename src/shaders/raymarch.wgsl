@@ -294,7 +294,10 @@ fn terrainNormal(p: vec3f) -> vec3f {
 
 const MAX_STEPS: i32 = 120;
 const MAX_DIST: f32 = 120.0;
-const SURFACE_DIST: f32 = 0.005;
+const SURFACE_DIST: f32 = 0.003;
+const SURFACE_DIST_SCALE: f32 = 0.00008;
+const SURFACE_DIST_MAX: f32 = 0.012;
+const PRIMARY_MIN_STEP: f32 = 0.0025;
 
 struct RayResult {
   dist: f32,
@@ -308,16 +311,41 @@ fn rayMarch(ro: vec3f, rd: vec3f) -> RayResult {
   result.totalDist = 0.0;
   result.hit = false;
   result.materialId = 2u; // sky by default
+  var prevTotalDist = 0.0;
+  var prevDist = 1e9;
 
   for (var i = 0; i < MAX_STEPS; i++) {
     let p = ro + rd * result.totalDist;
     let hit = sceneSDF(p);
     result.dist = hit.dist;
 
-    // Distance-adaptive threshold: relax at distance (subpixel anyway)
-    let surfaceThreshold = SURFACE_DIST + result.totalDist * 0.0005;
+    // Keep threshold growth modest to avoid camera-centered shell artifacts.
+    let surfaceThreshold = min(SURFACE_DIST + result.totalDist * SURFACE_DIST_SCALE, SURFACE_DIST_MAX);
 
     if (hit.dist < surfaceThreshold) {
+      // Refine hit position to improve world-space stability at grazing angles.
+      // This reduces camera-dependent jitter that shows up as shadow splotches.
+      if (prevDist * hit.dist <= 0.0) {
+        var tNear = prevTotalDist;
+        var tFar = result.totalDist;
+        for (var j = 0; j < 4; j++) {
+          let tMid = 0.5 * (tNear + tFar);
+          let dMid = sceneSDF(ro + rd * tMid).dist;
+          if (dMid > 0.0) {
+            tNear = tMid;
+          } else {
+            tFar = tMid;
+          }
+        }
+        result.totalDist = 0.5 * (tNear + tFar);
+      } else if (hit.dist > 0.0) {
+        // If we accepted by threshold before crossing the surface,
+        // pull back a bit to reduce depth-quantized shading rings.
+        result.totalDist = max(result.totalDist - hit.dist * 0.5, prevTotalDist);
+      } else if (hit.dist < 0.0) {
+        // Fallback clamp for slight overshoot when no sign change was bracketed.
+        result.totalDist = max(result.totalDist + hit.dist, prevTotalDist);
+      }
       result.hit = true;
       result.materialId = hit.materialId;
       break;
@@ -325,7 +353,9 @@ fn rayMarch(ro: vec3f, rd: vec3f) -> RayResult {
     // Trust the SDF — only enforce a tiny fixed minimum to avoid zero-step stalls.
     // Do NOT scale minStep with distance: that causes overshoot on grazing rays,
     // producing dark circular splotches where the ray punches underground.
-    result.totalDist += max(hit.dist, 0.005);
+    prevTotalDist = result.totalDist;
+    prevDist = hit.dist;
+    result.totalDist += max(hit.dist, PRIMARY_MIN_STEP);
     if (result.totalDist > MAX_DIST) { break; }
   }
 
@@ -479,20 +509,35 @@ fn applyFog(color: vec3f, dist: f32, rd: vec3f) -> vec3f {
 
 // ── Soft shadows ─────────────────────────────────────────────────────────
 
+const SHADOW_STEPS: i32 = 72;
+const SHADOW_HIT_EPS: f32 = 0.0005;
+const SHADOW_MIN_STEP_BASE: f32 = 0.0015;
+const SHADOW_MIN_STEP_DIST_SCALE: f32 = 0.01;
+const SHADOW_MAX_STEP: f32 = 1.25;
+
+const SHADOW_BIAS_BASE: f32 = 0.02;
+const SHADOW_BIAS_GRAZE_SCALE: f32 = 0.06;
+const SHADOW_LIGHT_PUSH: f32 = 0.012;
+
 // SDF-based soft shadow using penumbra estimation
 // Returns shadow factor: 0.0 = full shadow, 1.0 = fully lit
 fn calcSoftShadow(ro: vec3f, rd: vec3f, mint: f32, maxt: f32, k: f32) -> f32 {
   var res = 1.0;
   var t = mint;
   
-  for (var i = 0; i < 64; i++) {
+  for (var i = 0; i < SHADOW_STEPS; i++) {
     let p = ro + rd * t;
     let h = sceneSDF_cheap(p);
+
+    // If the shadow ray enters geometry, this point is shadowed.
+    if (h < SHADOW_HIT_EPS) { return 0.0; }
     
     // Simple soft shadow: smaller h/t ratio = sharper shadow edge
-    res = min(res, k * max(h, 0.0) / t);
+    res = min(res, k * h / t);
     
-    t += max(h, 0.001);
+    // Use distance-scaled min step to avoid fixed-step shell artifacts (rings).
+    let minStep = SHADOW_MIN_STEP_BASE + t * SHADOW_MIN_STEP_DIST_SCALE;
+    t += clamp(h, minStep, SHADOW_MAX_STEP);
     
     if (res < 0.001 || t > maxt) { break; }
   }
@@ -518,9 +563,11 @@ fn shade(p: vec3f, normal: vec3f, materialId: u32) -> vec3f {
   let moonDir = normalize(scene.moonDir);
   
   // Calculate moon shadow (soft shadows from moonlight)
-  // Start slightly off surface to avoid self-shadowing artifacts
-  let shadowOrigin = p + normal * 0.05;
-  let moonShadow = calcSoftShadow(shadowOrigin, moonDir, 0.1, 30.0, 8.0);
+  // Use slope-scaled bias to reduce view-dependent self-shadow artifacts.
+  let moonNdotL = max(dot(normal, moonDir), 0.0);
+  let moonBias = SHADOW_BIAS_BASE + (1.0 - moonNdotL) * SHADOW_BIAS_GRAZE_SCALE;
+  let moonShadowOrigin = p + normal * moonBias + moonDir * SHADOW_LIGHT_PUSH;
+  let moonShadow = calcSoftShadow(moonShadowOrigin, moonDir, 0.02, 40.0, 5.5);
   
   // Moonlight diffuse with shadows - high contrast
   let moonDiffuse = max(dot(normal, moonDir), 0.0);
@@ -538,7 +585,10 @@ fn shade(p: vec3f, normal: vec3f, materialId: u32) -> vec3f {
   let lightDiffuse = max(dot(normal, lightDir), 0.0);
   
   // House light shadow (softer k value for warmer light)
-  let houseShadow = calcSoftShadow(shadowOrigin, lightDir, 0.1, lightDist, 4.0);
+  let houseNdotL = max(dot(normal, lightDir), 0.0);
+  let houseBias = SHADOW_BIAS_BASE + (1.0 - houseNdotL) * SHADOW_BIAS_GRAZE_SCALE;
+  let houseShadowOrigin = p + normal * houseBias + lightDir * SHADOW_LIGHT_PUSH;
+  let houseShadow = calcSoftShadow(houseShadowOrigin, lightDir, 0.02, lightDist, 3.5);
   color += scene.houseLightColor * lightDiffuse * lightAtten * houseShadow * 0.5;
 
   // Rim light for Ari (helps silhouette) - no shadow needed
