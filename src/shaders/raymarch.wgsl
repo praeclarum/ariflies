@@ -317,13 +317,17 @@ fn rayMarch(ro: vec3f, rd: vec3f) -> RayResult {
     let hit = sceneSDF(p);
     result.dist = hit.dist;
 
-    if (hit.dist < SURFACE_DIST) {
+    // Distance-adaptive thresholds: relax at distance (subpixel anyway)
+    let surfaceThreshold = SURFACE_DIST + result.totalDist * 0.0005;
+
+    if (hit.dist < surfaceThreshold) {
       result.hit = true;
       result.materialId = hit.materialId;
       break;
     }
-    // Minimum step to avoid getting stuck on noisy surfaces
-    result.totalDist += max(hit.dist, 0.01);
+    // Scale minimum step with distance — far away we can afford bigger leaps
+    let minStep = 0.01 + result.totalDist * 0.001;
+    result.totalDist += max(hit.dist, minStep);
     if (result.totalDist > MAX_DIST) { break; }
   }
 
