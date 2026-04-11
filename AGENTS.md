@@ -504,7 +504,7 @@ Use these rules when uncertain:
 ### Milestone 2: Playable Core 🔶
 
 - [x] Ari controllable with WASD
-- [ ] click interaction basics (click-to-move / target firefly)
+- [ ] Ari controllable with drag on mobile devices and tap to jump/pounce
 - [x] fireflies moving and catchable
 - [x] 2-minute score attack loop functional
 
@@ -577,10 +577,16 @@ These decisions are final. Do not revisit or second-guess them.
 
 ```
 index.html          ← entry point (canvas + UI overlay)
+editor.html         ← level editor (terrain painting, JSON editing, live preview)
 jsconfig.json       ← type checking config
 package.json        ← dev scripts only (live-server, tsc)
+levels/
+  level0.json       ← default level metadata (entities, lights, spawn zones)
+  level0.png        ← default level terrain (256×256 RGBA heightmap/material)
 src/
   main.js           ← app entry, WebGPU init
+  editor.js         ← level editor logic
+  levels.js         ← level loading, terrain texture, spawn zone expansion
   shaders/          ← .wgsl files loaded via fetch()
 .github/
   workflows/
@@ -715,6 +721,8 @@ src/
   compute.js        ← 3 compute pipelines, shader loading, dispatch
   renderer.js       ← fullscreen ray march render pipeline
   game.js           ← session flow, timer, score readback, DOM updates
+  levels.js         ← level data loading, terrain texture, firefly zone expansion
+  editor.js         ← level editor: terrain canvas, JSON editor, file I/O
   shaders/
     camera_compute.wgsl
     ari_compute.wgsl
@@ -740,3 +748,56 @@ src/
 * Configurable render scale passed as uniform (allows half-res for perf tuning)
 * ~50 fireflies (good balance for 2-min session)
 * `atomicAdd` for thread-safe score increment in firefly compute
+
+### Level Data System
+
+Levels are stored as file pairs in the `/levels/` directory:
+
+* `levels/{id}.png` — 256×256 RGBA terrain texture
+* `levels/{id}.json` — level metadata (entities, lights, spawn zones, world config)
+
+The game loads a level at startup via `?level=level0` URL parameter (defaults to `level0`).
+
+#### Terrain Texture Encoding (256×256 RGBA PNG)
+
+| Channel | Encoding | Range |
+|---------|----------|-------|
+| R | Height | 0–255 → 0.0–`maxHeight` (from JSON) |
+| G | Material ID | 0=grass, 64=puddle, 128=wood, 192=concrete |
+| B | Detail/variation | reserved for future use (grass density, dampness) |
+| A | Reserved | 255 default |
+
+Coordinate mapping: pixel (0,0) = world `(-worldRadius, -worldRadius)`, pixel (255,255) = world `(+worldRadius, +worldRadius)`. Height uses bilinear interpolation; material uses nearest-neighbor to avoid blending between material types.
+
+#### Level JSON Schema
+
+```json
+{
+  "name": "Backyard",
+  "version": 1,
+  "world": { "radius": 15.0, "maxHeight": 5.0 },
+  "ari": { "startPosition": [0, 0, 0] },
+  "fireflyZones": [
+    { "center": [3, 1.5, 5], "radius": 3.0, "count": 15, "minHeight": 0.5, "maxHeight": 2.5 }
+  ],
+  "lights": {
+    "moon": { "direction": [0.4, 0.35, 0.6], "color": [0.8, 0.9, 1.1] },
+    "houseLight": { "position": [-8, 3, 8], "color": [1.0, 0.7, 0.3] }
+  },
+  "scene": { "fogDensity": 0.02, "ambientColor": [0.008, 0.01, 0.02] },
+  "camera": { "initialDistance": 10.0, "initialPitch": 0.6 },
+  "game": { "duration": 120 }
+}
+```
+
+Fireflies are defined as **spawn zones** (center, radius, count). At load time, `levels.js` expands zones into individual home positions scattered within each zone. The firefly buffer is pre-allocated for a max of 200 fireflies; the actual count is a uniform.
+
+#### Level Editor (`editor.html`)
+
+A dev-only interactive editor at `/editor.html` with three panels:
+
+1. **Terrain editor** — top-down 2D canvas for painting height and material brushes
+2. **JSON editor** — textarea for editing level metadata with live validation
+3. **Preview** — WebGPU canvas showing the level as it would appear in-game, updating live on edits
+
+Level files are saved via download links (PNG + JSON). Loaded via file picker or `?level=` URL param.

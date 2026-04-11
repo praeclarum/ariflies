@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ari &amp; the Fireflies — Level Editor</title>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --panel-bg: #16213e;
+      --border: #0f3460;
+      --text: #e0e0e0;
+      --accent: #e94560;
+      --accent2: #53a8b6;
+      --toolbar-bg: #0f3460;
+      --input-bg: #1a1a2e;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header / Toolbar ─────────────────────────────────── */
+
+    #toolbar {
+      background: var(--toolbar-bg);
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+
+    #toolbar label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: #aaa;
+    }
+
+    #toolbar select,
+    #toolbar input[type="range"],
+    #toolbar button {
+      font-family: inherit;
+      font-size: 12px;
+      background: var(--input-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 8px;
+    }
+
+    #toolbar button {
+      cursor: pointer;
+      padding: 4px 12px;
+    }
+    #toolbar button:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    #toolbar .separator {
+      width: 1px;
+      height: 24px;
+      background: var(--border);
+    }
+
+    #toolbar input[type="range"] {
+      width: 80px;
+      padding: 0;
+    }
+
+    .brush-group {
+      display: flex;
+      gap: 4px;
+    }
+
+    .brush-btn {
+      padding: 4px 10px !important;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .brush-btn.active {
+      background: var(--accent) !important;
+      border-color: var(--accent) !important;
+      color: #fff;
+    }
+
+    /* ── Main Layout (2 columns on top, preview on bottom) ── */
+
+    #main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 2px;
+      min-height: 0;
+    }
+
+    .panel {
+      background: var(--panel-bg);
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      background: var(--toolbar-bg);
+      padding: 4px 10px;
+      font-size: 12px;
+      color: #888;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* ── Terrain Panel ──────────────────────────────────────── */
+
+    #terrain-panel {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    #terrain-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px;
+      min-height: 0;
+    }
+
+    #terrain-canvas {
+      image-rendering: pixelated;
+      cursor: crosshair;
+      border: 1px solid var(--border);
+      max-width: 100%;
+      max-height: 100%;
+      aspect-ratio: 1;
+    }
+
+    /* ── JSON Panel ─────────────────────────────────────────── */
+
+    #json-panel {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
+    #json-editor {
+      flex: 1;
+      background: var(--input-bg);
+      color: #c8d6e5;
+      border: none;
+      padding: 10px;
+      font-family: inherit;
+      font-size: 13px;
+      line-height: 1.5;
+      resize: none;
+      outline: none;
+      tab-size: 2;
+      min-height: 0;
+    }
+
+    #json-error {
+      color: var(--accent);
+      font-size: 11px;
+      padding: 4px 10px;
+      background: rgba(233, 69, 96, 0.1);
+      display: none;
+      flex-shrink: 0;
+    }
+
+    /* ── Preview Panel ──────────────────────────────────────── */
+
+    #preview-panel {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+
+    #preview-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
+      color: #555;
+      font-size: 16px;
+    }
+
+    #preview-canvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ── Status bar ─────────────────────────────────────────── */
+
+    #statusbar {
+      background: var(--toolbar-bg);
+      padding: 4px 12px;
+      font-size: 11px;
+      color: #666;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* ── Hidden file inputs ──────────────────────────────────── */
+
+    .hidden-input {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <label>
+      Brush:
+      <span class="brush-group">
+        <button class="brush-btn active" data-brush="heightUp" title="Paint height up">▲ Height</button>
+        <button class="brush-btn" data-brush="heightDown" title="Paint height down">▼ Height</button>
+        <button class="brush-btn" data-brush="material" title="Paint material">🎨 Material</button>
+      </span>
+    </label>
+
+    <div class="separator"></div>
+
+    <label>
+      Material:
+      <select id="material-select">
+        <option value="0">Grass</option>
+        <option value="64">Puddle</option>
+        <option value="128">Wood</option>
+        <option value="192">Concrete</option>
+      </select>
+    </label>
+
+    <div class="separator"></div>
+
+    <label>
+      Size:
+      <input type="range" id="brush-size" min="1" max="20" value="5">
+      <span id="brush-size-label">5</span>
+    </label>
+
+    <label>
+      Strength:
+      <input type="range" id="brush-strength" min="1" max="50" value="10">
+      <span id="brush-strength-label">10</span>
+    </label>
+
+    <div class="separator"></div>
+
+    <button id="btn-load-terrain" title="Load terrain PNG">📂 Terrain</button>
+    <button id="btn-load-json" title="Load level JSON">📂 JSON</button>
+    <button id="btn-save-terrain" title="Save terrain as PNG">💾 Terrain</button>
+    <button id="btn-save-json" title="Save level JSON">💾 JSON</button>
+    <button id="btn-save-both" title="Save both terrain + JSON">💾 Both</button>
+
+    <div class="separator"></div>
+
+    <button id="btn-clear-terrain" title="Reset terrain to flat grass">🗑 Clear</button>
+  </div>
+
+  <!-- Main panels -->
+  <div id="main">
+    <!-- Terrain Editor -->
+    <div class="panel" id="terrain-panel">
+      <div class="panel-header">
+        <span>Terrain Editor (256×256)</span>
+        <span id="terrain-cursor-info">—</span>
+      </div>
+      <div id="terrain-container">
+        <canvas id="terrain-canvas" width="256" height="256"></canvas>
+      </div>
+    </div>
+
+    <!-- JSON Editor -->
+    <div class="panel" id="json-panel">
+      <div class="panel-header">
+        <span>Level JSON</span>
+        <span id="json-status">✓ valid</span>
+      </div>
+      <textarea id="json-editor" spellcheck="false"></textarea>
+      <div id="json-error"></div>
+    </div>
+
+    <!-- Preview -->
+    <div class="panel" id="preview-panel">
+      <div class="panel-header">
+        <span>Preview</span>
+        <span>Phase 2 — WebGPU preview coming soon</span>
+      </div>
+      <div id="preview-container">
+        <canvas id="preview-canvas"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div id="statusbar">
+    <span id="status-level">Level: —</span>
+    <span id="status-info">Ready</span>
+  </div>
+
+  <!-- Hidden file inputs -->
+  <input type="file" id="file-terrain" class="hidden-input" accept=".png">
+  <input type="file" id="file-json" class="hidden-input" accept=".json">
+
+  <script type="module" src="src/editor.js"></script>
+</body>
+</html>
