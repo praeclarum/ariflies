@@ -29,8 +29,8 @@ export const FIREFLY_ARRAY_SIZE = FIREFLY_STRIDE * MAX_FIREFLIES;
 /** GameState: score(u32) + catchThisFrame(u32) + gamePhase(u32) + timeRemaining(f32) */
 export const GAME_STATE_SIZE = 16;
 
-/** SceneParams: moonDir(vec3f) + _pad + moonColor(vec3f) + _pad + houseLightPos(vec3f) + _pad + houseLightColor(vec3f) + fogDensity(f32) + ambientColor(vec3f) + _pad */
-export const SCENE_PARAMS_SIZE = 80;
+/** SceneParams: moonDir(vec3f) + _pad + moonColor(vec3f) + _pad + houseLightPos(vec3f) + _pad + houseLightColor(vec3f) + fogDensity(f32) + ambientColor(vec3f) + _pad + worldRadius(f32) + maxHeight(f32) + _pad(2) */
+export const SCENE_PARAMS_SIZE = 96;
 
 // ── Key bitmask constants (shared with WGSL) ───────────────────────────────
 
@@ -56,6 +56,9 @@ export const PHASE_WAITING = 0;
 export const PHASE_PLAYING = 1;
 export const PHASE_ENDED   = 2;
 
+/** Terrain texture resolution */
+export const TERRAIN_SIZE = 256;
+
 /**
  * @typedef {Object} Buffers
  * @property {GPUBuffer} input
@@ -65,6 +68,8 @@ export const PHASE_ENDED   = 2;
  * @property {GPUBuffer} game
  * @property {GPUBuffer} scene
  * @property {GPUBuffer} gameStaging
+ * @property {GPUTexture} terrainTexture
+ * @property {GPUSampler} terrainSampler
  */
 
 /**
@@ -113,6 +118,22 @@ export function createBuffers(device) {
     label: 'GameState-Staging',
     size: GAME_STATE_SIZE,
     usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+
+  // Terrain texture (256×256 RGBA8, initially flat)
+  const terrainTexture = device.createTexture({
+    label: 'TerrainTexture',
+    size: [TERRAIN_SIZE, TERRAIN_SIZE],
+    format: 'rgba8unorm',
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+  });
+
+  const terrainSampler = device.createSampler({
+    label: 'TerrainSampler',
+    magFilter: 'linear',
+    minFilter: 'linear',
+    addressModeU: 'clamp-to-edge',
+    addressModeV: 'clamp-to-edge',
   });
 
   // ── Write initial values ────────────────────────────────────────────────
@@ -209,10 +230,12 @@ export function createBuffers(device) {
     f[12] = 1.0; f[13] = 0.7; f[14] = 0.3; f[15] = 0.02;
     // ambientColor (very minimal - let moonlight do the work)
     f[16] = 0.008; f[17] = 0.01; f[18] = 0.02; f[19] = 0.0;
+    // worldRadius, maxHeight (defaults, overwritten by level load)
+    f[20] = 15.0; f[21] = 5.0; f[22] = 0.0; f[23] = 0.0;
     device.queue.writeBuffer(scene, 0, data);
   }
 
-  return { input, camera, ari, fireflies, game, scene, gameStaging };
+  return { input, camera, ari, fireflies, game, scene, gameStaging, terrainTexture, terrainSampler };
 }
 
 /**
@@ -255,6 +278,7 @@ export async function readbackGameState(buffers) {
 
 /**
  * @typedef {Object} LevelBufferConfig
+ * @property {{ radius: number, maxHeight: number }} world
  * @property {{ startPosition: [number, number, number] }} ari
  * @property {{ moon: { direction: [number, number, number], color: [number, number, number] }, houseLight: { position: [number, number, number], color: [number, number, number] } }} lights
  * @property {{ fogDensity: number, ambientColor: [number, number, number] }} scene
@@ -268,8 +292,9 @@ export async function readbackGameState(buffers) {
  * @param {Buffers} buffers
  * @param {LevelBufferConfig} config
  * @param {FireflyHome[]} fireflyHomes
+ * @param {ImageData} [terrainImageData]
  */
-export function resetBuffersFromLevel(device, buffers, config, fireflyHomes) {
+export function resetBuffersFromLevel(device, buffers, config, fireflyHomes, terrainImageData) {
   // Camera: behind and above Ari start position
   {
     const sp = config.ari.startPosition;
@@ -351,6 +376,20 @@ export function resetBuffersFromLevel(device, buffers, config, fireflyHomes) {
     f[15] = config.scene.fogDensity;
     const ac = config.scene.ambientColor;
     f[16] = ac[0]; f[17] = ac[1]; f[18] = ac[2]; f[19] = 0.0;
+    // World params
+    f[20] = config.world.radius;
+    f[21] = config.world.maxHeight;
+    f[22] = 0.0; f[23] = 0.0;
     device.queue.writeBuffer(buffers.scene, 0, data);
+  }
+
+  // Terrain texture: upload from ImageData
+  if (terrainImageData) {
+    device.queue.writeTexture(
+      { texture: buffers.terrainTexture },
+      terrainImageData.data,
+      { bytesPerRow: TERRAIN_SIZE * 4 },
+      { width: TERRAIN_SIZE, height: TERRAIN_SIZE },
+    );
   }
 }

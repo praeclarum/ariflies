@@ -504,7 +504,7 @@ Use these rules when uncertain:
 ### Milestone 2: Playable Core 🔶
 
 - [x] Ari controllable with WASD
-- [ ] Ari controllable with drag on mobile devices and tap to jump/pounce
+- [x] Ari controllable with drag on mobile devices and tap to jump/pounce
 - [x] fireflies moving and catchable
 - [x] 2-minute score attack loop functional
 
@@ -525,9 +525,10 @@ Use these rules when uncertain:
 
 ### Milestone 5: World Beauty ❌
 
-- [ ] terrain texture data driving height/material variation
+- [ ] terrain texture height variation
+- [ ] terrain texture data material variation
 - [ ] deck, fence, bushes, house wall integrated
-- [ ] firefly congregation zones (partial: they have home positions but no variety by zone)
+- [x] firefly congregation zones (partial: they have home positions but no variety by zone)
 - [ ] composition improved for screenshots
 
 ### Milestone 6: Polish 🔶

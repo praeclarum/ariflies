@@ -45,6 +45,10 @@ export async function createRenderer(device, format, buffers) {
       { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
       // 5: SceneParams (uniform)
       { binding: 5, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+      // 6: Terrain texture
+      { binding: 6, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+      // 7: Terrain sampler
+      { binding: 7, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
     ],
   });
 
@@ -76,6 +80,8 @@ export async function createRenderer(device, format, buffers) {
       { binding: 3, resource: { buffer: buffers.fireflies } },
       { binding: 4, resource: { buffer: buffers.game } },
       { binding: 5, resource: { buffer: buffers.scene } },
+      { binding: 6, resource: buffers.terrainTexture.createView() },
+      { binding: 7, resource: buffers.terrainSampler },
     ],
   });
 

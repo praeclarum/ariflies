@@ -78,6 +78,10 @@ struct SceneParams {
   fogDensity: f32,
   ambientColor: vec3f,
   _pad3: f32,
+  worldRadius: f32,
+  maxHeight: f32,
+  _pad4: f32,
+  _pad5: f32,
 };
 
 // ── Bindings ─────────────────────────────────────────────────────────────
@@ -88,6 +92,8 @@ struct SceneParams {
 @group(0) @binding(3) var<storage, read> fireflies: array<Firefly>;
 @group(0) @binding(4) var<storage, read> game: GameState;
 @group(0) @binding(5) var<uniform> scene: SceneParams;
+@group(0) @binding(6) var terrainTexture: texture_2d<f32>;
+@group(0) @binding(7) var terrainSampler: sampler;
 
 // ── Vertex shader: fullscreen triangle ───────────────────────────────────
 
@@ -196,6 +202,39 @@ fn sdAri(p: vec3f) -> f32 {
   return d;
 }
 
+// ── Terrain height ───────────────────────────────────────────────────────
+
+fn worldToTerrainUV(worldXZ: vec2f) -> vec2f {
+  return (worldXZ + vec2f(scene.worldRadius)) / (2.0 * scene.worldRadius);
+}
+
+// Fade factor: 1.0 inside terrain, fades to 0 outside world radius
+fn terrainFade(worldXZ: vec2f) -> f32 {
+  let uv = worldToTerrainUV(worldXZ);
+  // Distance from UV center (0.5, 0.5) in UV space
+  let fromCenter = abs(uv - vec2f(0.5)) * 2.0; // 0..1 inside, >1 outside
+  let edgeDist = max(fromCenter.x, fromCenter.y);
+  return 1.0 - smoothstep(0.9, 1.0, edgeDist);
+}
+
+fn getTerrainHeight(worldXZ: vec2f) -> f32 {
+  let uv = worldToTerrainUV(worldXZ);
+  let clampedUV = clamp(uv, vec2f(0.001), vec2f(0.999));
+  let h = textureSample(terrainTexture, terrainSampler, clampedUV).r;
+  return h * scene.maxHeight * terrainFade(worldXZ);
+}
+
+// Terrain gradient for proper SDF distance estimation and analytic normals
+fn getTerrainGradient(worldXZ: vec2f) -> vec2f {
+  let texelSize = scene.worldRadius * 2.0 / 256.0; // world-space texel
+  let e = texelSize;
+  let hL = getTerrainHeight(worldXZ - vec2f(e, 0.0));
+  let hR = getTerrainHeight(worldXZ + vec2f(e, 0.0));
+  let hD = getTerrainHeight(worldXZ - vec2f(0.0, e));
+  let hU = getTerrainHeight(worldXZ + vec2f(0.0, e));
+  return vec2f(hR - hL, hU - hD) / (2.0 * e);
+}
+
 // ── Scene SDF ────────────────────────────────────────────────────────────
 
 const FIREFLY_COUNT: u32 = 50u;
@@ -206,8 +245,13 @@ struct HitInfo {
 };
 
 fn sceneSDF(p: vec3f) -> HitInfo {
-  // Ground plane at y=0
-  let ground = p.y;
+  // Terrain heightfield with Lipschitz-correct distance estimate
+  // For a heightfield h(x,z), the proper conservative bound is:
+  //   d = (p.y - h) / sqrt(1 + |grad(h)|^2)
+  let terrainH = getTerrainHeight(p.xz);
+  let grad = getTerrainGradient(p.xz);
+  let gradMag2 = dot(grad, grad);
+  let ground = (p.y - terrainH) / sqrt(1.0 + gradMag2);
 
   // Ari
   let ariDist = sdAri(p);
@@ -224,8 +268,17 @@ fn sceneSDF(p: vec3f) -> HitInfo {
   return hit;
 }
 
+// Cheaper SDF for shadow rays (skip gradient, use conservative factor)
+fn sceneSDF_cheap(p: vec3f) -> f32 {
+  let terrainH = getTerrainHeight(p.xz);
+  let ground = (p.y - terrainH) * 0.4; // conservative for max slope
+  let ariDist = sdAri(p);
+  return min(ariDist, ground);
+}
+
 fn sceneNormal(p: vec3f) -> vec3f {
-  let e = 0.001;
+  // Use analytic terrain normal when we hit ground (avoids noisy finite differences)
+  let e = 0.002;
   let d = sceneSDF(p).dist;
   return normalize(vec3f(
     sceneSDF(p + vec3f(e, 0.0, 0.0)).dist - d,
@@ -234,10 +287,16 @@ fn sceneNormal(p: vec3f) -> vec3f {
   ));
 }
 
+fn terrainNormal(p: vec3f) -> vec3f {
+  let grad = getTerrainGradient(p.xz);
+  // Normal from heightfield gradient: (-dh/dx, 1, -dh/dz) normalized
+  return normalize(vec3f(-grad.x, 1.0, -grad.y));
+}
+
 // ── Ray marching ─────────────────────────────────────────────────────────
 
-const MAX_STEPS: i32 = 80;
-const MAX_DIST: f32 = 80.0;
+const MAX_STEPS: i32 = 120;
+const MAX_DIST: f32 = 120.0;
 const SURFACE_DIST: f32 = 0.005;
 
 struct RayResult {
@@ -263,7 +322,8 @@ fn rayMarch(ro: vec3f, rd: vec3f) -> RayResult {
       result.materialId = hit.materialId;
       break;
     }
-    result.totalDist += hit.dist;
+    // Minimum step to avoid getting stuck on noisy surfaces
+    result.totalDist += max(hit.dist, 0.01);
     if (result.totalDist > MAX_DIST) { break; }
   }
 
@@ -426,7 +486,7 @@ fn calcSoftShadow(ro: vec3f, rd: vec3f, mint: f32, maxt: f32, k: f32) -> f32 {
   
   for (var i = 0; i < 32; i++) {
     let p = ro + rd * t;
-    let h = sceneSDF(p).dist;
+    let h = sceneSDF_cheap(p);
     
     // Improved soft shadow with better penumbra estimation
     let y = h * h / (2.0 * ph);
@@ -557,7 +617,13 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
   var color: vec3f;
   if (result.hit) {
     let hitPos = eye + rd * result.totalDist;
-    let normal = sceneNormal(hitPos);
+    // Use analytic normal for terrain (smooth, no noise), SDF normal for Ari
+    var normal: vec3f;
+    if (result.materialId == 0u) {
+      normal = terrainNormal(hitPos);
+    } else {
+      normal = sceneNormal(hitPos);
+    }
     color = shade(hitPos, normal, result.materialId);
     color = applyFog(color, result.totalDist, rd);
   } else {

@@ -2,37 +2,65 @@
   "name": "Backyard",
   "version": 1,
   "world": {
-    "radius": 15.0,
-    "maxHeight": 5.0
+    "radius": 30,
+    "maxHeight": 5
   },
   "ari": {
-    "startPosition": [0, 0, 0]
+    "startPosition": [
+      0,
+      0,
+      0
+    ]
   },
   "fireflyZones": [
     {
-      "center": [0, 1.5, 0],
-      "radius": 12.0,
-      "count": 50,
+      "center": [
+        0,
+        1.5,
+        -10
+      ],
+      "radius": 15,
+      "count": 10,
       "minHeight": 0.5,
       "maxHeight": 2.5
     }
   ],
   "lights": {
     "moon": {
-      "direction": [0.4, 0.35, 0.6],
-      "color": [0.8, 0.9, 1.1]
+      "direction": [
+        0.4,
+        0.35,
+        -0.6
+      ],
+      "color": [
+        0.8,
+        0.9,
+        1.1
+      ]
     },
     "houseLight": {
-      "position": [-8, 3, 8],
-      "color": [1.0, 0.7, 0.3]
+      "position": [
+        -8,
+        3,
+        8
+      ],
+      "color": [
+        1,
+        0.7,
+        0.3
+      ]
     }
   },
   "scene": {
     "fogDensity": 0.02,
-    "ambientColor": [0.008, 0.01, 0.02]
+    "ambientColor": [
+      0.008,
+      0.01,
+      0.02
+    ]
   },
   "camera": {
-    "initialDistance": 10.0,
+    "initialDistance": 10,
     "initialPitch": 0.6
   },
   "game": {

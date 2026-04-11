@@ -113,7 +113,7 @@ export async function createEngine(canvas) {
  */
 export function loadLevel(engine, levelData) {
   const homes = spawnFirefliesFromZones(levelData.config.fireflyZones);
-  resetBuffersFromLevel(engine.device, engine.buffers, levelData.config, homes);
+  resetBuffersFromLevel(engine.device, engine.buffers, levelData.config, homes, levelData.terrainImageData);
 
   // Reset game session if one exists
   if (engine.gameSession) {

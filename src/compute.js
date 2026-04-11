@@ -82,6 +82,9 @@ export async function createComputePipelines(device, buffers) {
       { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
       { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
       { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+      { binding: 4, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'float' } },
+      { binding: 5, visibility: GPUShaderStage.COMPUTE, sampler: { type: 'filtering' } },
     ],
   });
   const ariPipeline = device.createComputePipeline({
@@ -96,6 +99,9 @@ export async function createComputePipelines(device, buffers) {
       { binding: 0, resource: { buffer: buffers.input } },
       { binding: 1, resource: { buffer: buffers.camera } },
       { binding: 2, resource: { buffer: buffers.ari } },
+      { binding: 3, resource: { buffer: buffers.scene } },
+      { binding: 4, resource: buffers.terrainTexture.createView() },
+      { binding: 5, resource: buffers.terrainSampler },
     ],
   });
 
